@@ -78,106 +78,18 @@ h1,h2,h3,h4,h5,h6 {
       & > .content {
         flex: 1 0 auto;
         display: flex;
-
-        & > .sidebar {
-          flex: 0 0 auto;
-          min-width: 0;
-
-          background: var(--main-sidebar-bg-color);
-          border-right: 1px solid var(--grey-n04);
-
-          & > .content {
-            display: none;
-
-            & nav {
-              & > header {
-                display: flex;
-                justify-content: flex-end;
-                align-items: center;
-
-                & h3 {
-                  order: 99;
-                  margin-bottom: 0;
-                  @chassis apply inline-block margin-left;
-                }
-
-                & .icon {
-                  @chassis font-size small;
-
-                  &.expand {
-                    display: none;
-                  }
-                }
-              }
-
-              & ol {
-                @chassis font-size small;
-
-                & li {
-                  @chassis apply inline-block padding-bottom;
-
-                  &:first-child {
-                    @chassis apply inline-block padding-top;
-                  }
-                }
-              }
-
-              &.collapsed {
-                & .icon {
-                  &.expand {
-                    display: block;
-                  }
-
-                  &.collapse {
-                    display: none;
-                  }
-                }
-
-                & ol {
-                  display: none;
-                }
-              }
-            }
-          }
-
-          &.expanded {
-            
-          }
-
-          @chassis vp-width <= medium {
-            width: auto;
-            padding: 0;
-          }
-
-          @chassis vp-width > small {
-            flex: 1 1 23.6%;
-            min-width: 280px;
-            padding: var(--main-content-padding-top) var(--typography-scale-ratio)em 0;
-            text-align: right;
-
-            & button {
-              display: none;
-            }
-
-            & > .content {
-              display: block;
-            }
-          }
-        }
-
-        & > .workspace {
-          flex: 1 1 auto;
-
-          min-width: 0;
-          padding-top: var(--main-content-padding-top);
-          padding-left: 6.18%;
-        }
       }
+    }
 
-      & > footer {
-        @chassis apply inline-block padding-y;
-        background: var(--main-footer-bg-color);
-      }
+    & .main.content {
+      flex: 1 0 auto;
+      display: flex;
+    }
+
+    & > footer,
+    & footer.main {
+      @chassis apply inline-block padding-y;
+      background: var(--main-footer-bg-color);
     }
   }
 
@@ -226,8 +138,108 @@ h1,h2,h3,h4,h5,h6 {
   }
 
   &.project {
-    & main .scrollable {
-      padding-top: 0;
+    & main > .content {
+      flex: 1 1 auto;
+      display: flex;
+
+      & > .sidebar {
+        flex: 0 0 auto;
+        min-width: 0;
+
+        padding: 0;
+        overflow: auto;
+
+        background: var(--main-sidebar-bg-color);
+        border-right: 1px solid var(--grey-n04);
+
+        & > .content {
+          display: none;
+          padding: var(--main-content-padding-top) var(--typography-scale-ratio)em 0;
+
+          & nav {
+            & > header {
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+
+              & h3 {
+                order: 99;
+                margin-bottom: 0;
+                @chassis apply inline-block margin-left;
+              }
+
+              & .icon {
+                @chassis font-size small;
+
+                &.expand {
+                  display: none;
+                }
+              }
+            }
+
+            & ol {
+              @chassis font-size small;
+
+              & li {
+                @chassis apply inline-block padding-bottom;
+
+                &:first-child {
+                  @chassis apply inline-block padding-top;
+                }
+              }
+            }
+
+            &.collapsed {
+              & .icon {
+                &.expand {
+                  display: block;
+                }
+
+                &.collapse {
+                  display: none;
+                }
+              }
+
+              & ol {
+                display: none;
+              }
+            }
+          }
+        }
+
+        &.expanded {
+
+        }
+
+        @chassis vp-width <= medium {
+          width: auto;
+          padding: 0;
+        }
+
+        @chassis vp-width > small {
+          flex: 1 1 23.6%;
+          min-width: 280px;
+          text-align: right;
+
+          & button {
+            display: none;
+          }
+
+          & > .content {
+            display: block;
+          }
+        }
+      }
+
+      & > .workspace {
+        flex: 1 1 auto;
+
+        min-width: 0;
+        padding-top: var(--main-content-padding-top);
+        padding-left: 6.18%;
+
+        overflow: auto;
+      }
     }
   }
 }
