@@ -1,0 +1,282 @@
+custom-properties {
+	--red: hsl(11,74%,54%);
+	--green: hsl(89,82%,40%);
+	--blue: #0099FF;
+	--yellow: hsl(55,100%,64%);
+
+	--font-family: -apple-system, BlinkMacSystemFont, 'Avenir Next', Avenir, Helvetica, Arial, sans-serif;
+	--text-color: var(--grey-c10);
+
+	--main-primary-header-bg-color: var(--grey-c09);
+	--main-primary-header-text-color: white;
+
+	--main-secondary-header-bg-color: white;
+
+	--main-content-padding-top: calc(var(--inline-block-margin-y) * (var(--typography-scale-ratio) * 2));
+
+	--main-sidebar-bg-color: white;
+
+	--main-footer-bg-color: var(--grey-n00);
+}
+
+components {
+	anchor {
+		@state initial {
+			color: var(--blue);
+		}
+
+		@state hover {
+			color: color-mod(var(--blue) lightness(50%));
+			text-decoration: underline;
+		}
+
+		@state active {
+			color: color-mod(var(--blue) lightness(44%));
+		}
+
+		@state disabled {
+			color: var(--grey-n04);
+			text-decoration: none;
+		}
+	}
+
+	button {
+		@state initial {
+			background: var(--blue);
+			border-radius: .236em;
+			color: white;
+
+			svg.icon {
+				stroke: currentColor;
+			}
+		}
+
+		@state hover {
+			background: color-mod(var(--blue) lightness(55%));
+		}
+
+		@state active {
+			background: color-mod(var(--blue) lightness(44%));
+		}
+
+		@state disabled {
+			opacity: .382;
+		}
+
+		@state focus {
+			outline: 0;
+		}
+	}
+
+	anchor-button {
+		@state initial {
+			background: var(--blue);
+			border-radius: .236em;
+			color: white;
+
+			svg.icon {
+				stroke: currentColor;
+			}
+		}
+
+		@state hover {
+			background: color-mod(var(--blue) lightness(55%));
+		}
+
+		@state active {
+			background: color-mod(var(--blue) lightness(44%));
+		}
+
+		@state disabled {
+			opacity: .382;
+		}
+	}
+
+	tag {
+		@state initial {
+			background: var(--grey-n10);
+			border-radius: .236em;
+			color: white;
+
+			& svg.icon {
+				stroke: currentColor;
+			}
+		}
+	}
+
+	table {
+		@state initial {
+			border-collapse: separate;
+			border-spacing: .382em 0;
+
+			caption {
+				font-weight: 700;
+			}
+
+			thead {
+				position: sticky;
+				top: 0;
+
+				border-bottom: 3px solid var(--grey-n03);
+				box-shadow: 0 3px 0 0 var(--grey-n03);
+			}
+
+			tfoot {
+				border-top: 3px solid var(--grey-n03);
+			}
+
+			tbody tr td {
+				border-bottom: 1px solid var(--grey-n03);
+			}
+
+			tbody tr:last-child td {
+				border-bottom: 0;
+			}
+		}
+	}
+
+	overlay {
+		@state initial {
+			background: black;
+		}
+	}
+
+	modal {
+		@state initial {
+			background: white;
+		}
+	}
+
+	chassis-control {
+		@state initial {}
+
+		@state disabled {
+			opacity: .382;
+		}
+	}
+
+	input {
+		@state initial {
+			margin-top: 0;
+			box-shadow: inset 0 -2px 0 0 var(--grey-n04);
+		}
+
+		@state focus {
+			outline: 0;
+			box-shadow: inset 0 -2px 0 0 var(--blue);
+		}
+	}
+
+	textarea {
+		@state initial {
+			box-shadow: 0 0 0 2px var(--grey-n04);
+		}
+
+		@state focus {
+			outline: 0;
+			box-shadow: 0 0 0 2px var(--blue);
+		}
+	}
+
+	chassis-optgroup-label {
+		@state initial {
+			font-weight: 700;
+		}
+	}
+
+	chassis-optgroup {
+		@state initial {
+			margin: 0 .618em .618em;
+			border: 1px solid var(--grey-n04);
+		}
+	}
+
+	chassis-select-title {
+		@state initial {
+			align-items: center;
+			justify-content: space-between;
+
+			svg {
+				width: 1em;
+				height: 1em;
+				margin-left: 1em;
+				vertical-align: middle;
+			}
+		}
+	}
+
+	chassis-options {
+		@state initial {
+			max-height: 16.18em;
+
+			background: white;
+			box-shadow:
+				inset 2px 0 0 0 var(--grey-n04),
+				inset -2px -2px 0 0 var(--grey-n04),
+				0 .236em 1em 0 color-mod(black alpha(10%))
+			;
+		}
+	}
+
+	chassis-option {
+		@state initial {}
+
+		@state hover {
+			background: color-mod(black alpha(6.18%));
+		}
+	}
+
+	chassis-datalist {
+		@state initial {
+			box-shadow: inset 0 -2px 0 0 var(--grey-n04);
+			transition: all ease-in-out .1s;
+		}
+
+		@state open {
+			box-shadow: inset 0 -2px 0 0 var(--blue);
+
+			chassis-options {
+				box-shadow:
+					inset 2px 0 0 0 var(--blue),
+					inset -2px -2px 0 0 var(--blue),
+					0 .236em 1em 0 color-mod(black alpha(10%))
+				;
+			}
+		}
+
+		@state focus {
+			box-shadow: inset 0 -2px 0 0 var(--blue);
+		}
+
+		@state disabled {
+			opacity: .382;
+		}
+	}
+
+	chassis-select {
+		@state initial {
+			box-shadow: inset 0 0 0 2px var(--grey-n04);
+			transition: all ease-in-out .1s;
+		}
+
+		@state open {
+			box-shadow: inset 0 0 0 2px var(--blue);
+
+			chassis-options {
+				box-shadow:
+					inset 2px 0 0 0 var(--blue),
+					inset -2px -2px 0 0 var(--blue),
+					0 .236em 1em 0 color-mod(black alpha(10%))
+				;
+			}
+		}
+
+		@state focus {
+			box-shadow: inset 0 0 0 2px var(--blue);
+		}
+
+		@state disabled {
+			opacity: .382;
+		}
+	}
+}

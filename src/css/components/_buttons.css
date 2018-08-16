@@ -1,0 +1,7 @@
+& button.bare {
+  @chassis new button {
+    @state initial {
+      color: var(--text-color);
+    }
+  }
+}
