@@ -42,14 +42,14 @@ class CustomProductionLine extends ProductionLine {
         let dir = path.dirname(filepath)
         let css = this.readFileSync(filepath)
 
-        chassis.process(css, (err, output) => {
+        chassis.process(css, (err, css) => {
           if (err) {
             throw err
           }
 
-          output = {
+          let output = {
             path: this.outputDirectory(filepath),
-            css: output
+            css
           }
 
           if (!minify) {
