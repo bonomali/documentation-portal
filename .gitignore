@@ -5,7 +5,6 @@
 _*
 !_*.css
 *.log
-*.svg
 node_modules
 **/dist
 env.json
