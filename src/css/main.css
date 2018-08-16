@@ -86,7 +86,6 @@ h1,h2,h3,h4,h5,h6 {
       display: flex;
     }
 
-    & > footer,
     & footer.main {
       @chassis apply inline-block padding-y;
       background: var(--main-footer-bg-color);
@@ -236,9 +235,17 @@ h1,h2,h3,h4,h5,h6 {
 
         min-width: 0;
         padding-top: var(--main-content-padding-top);
-        padding-left: 6.18%;
 
         overflow: auto;
+
+        & .width.constraint {
+          padding-left: 6.18%;
+        }
+
+        & > footer {
+          @chassis apply inline-block padding-y;
+          background: var(--main-footer-bg-color);
+        }
       }
     }
   }
