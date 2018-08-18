@@ -1,0 +1,180 @@
+&.project {
+  & main {
+    & > .content {
+      position: relative;
+      flex: 1 1 auto;
+      display: flex;
+
+      & > .sidebar {
+        position: relative;
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+
+        padding: 0;
+
+        background: var(--main-sidebar-bg-color);
+        border-right: var(--pane-border);
+
+        & button,
+        & .button {
+          @chassis new button {
+            @state initial {
+              padding: var(--inline-block-padding-x);
+              border-bottom: var(--pane-border);
+            }
+
+            @state hover {
+              background: var(--main-sidebar-button-hover-bg-color)
+            }
+          }
+
+          &.collapse {
+            align-self: flex-end;
+            padding: 2px;
+            border: none;
+            border-radius: 2px;
+
+            &:hover {
+              background: var(--red);
+              color: white;
+            }
+          }
+        }
+
+        & > .content {
+          display: none;
+          padding: var(--main-content-padding-top) var(--typography-scale-ratio)em 0;
+          overflow: auto;
+
+          & nav {
+            & > header {
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+
+              & h3 {
+                order: 99;
+                margin-bottom: 0;
+                @chassis apply inline-block margin-left;
+              }
+
+              & .icon {
+                @chassis font-size small;
+
+                &.expand {
+                  display: none;
+                }
+              }
+            }
+
+            & ol {
+              @chassis font-size small;
+
+              & li {
+                @chassis apply inline-block padding-bottom;
+
+                &:first-child {
+                  @chassis apply inline-block padding-top;
+                }
+              }
+            }
+
+            &.collapsed {
+              & .icon {
+                &.expand {
+                  display: block;
+                }
+
+                &.collapse {
+                  display: none;
+                }
+              }
+
+              & ol {
+                display: none;
+              }
+            }
+          }
+        }
+
+        &.expanded {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+
+          text-align: right;
+          box-shadow: var(--inline-block-margin-x) 0 var(--inline-block-padding-x) 0 color-mod(black a(23.6%));
+
+          & button {
+            &.collapse {
+              position: absolute;
+              top: var(--inline-block-margin-x);
+              right: var(--inline-block-margin-x);
+              display: inline-flex;
+            }
+
+            &.expand {
+              display: none;
+            }
+          }
+
+          & > .content {
+            display: block;
+          }
+
+          & + .workspace {
+            padding-left: calc((var(--svg-icon-height) + var(--inline-block-padding-x) * 2) - var(--pane-border-width));
+          }
+        }
+
+        @chassis vp-width <= medium {
+          width: auto;
+          padding: 0;
+
+          & button.collapse {
+            display: none;
+          }
+        }
+
+        @chassis vp-width > small {
+          position: static !important;
+          flex: 1 1 23.6%;
+          min-width: 280px;
+
+          text-align: right;
+          box-shadow: none !important;
+
+          & button {
+            display: none !important;
+          }
+
+          & > .content {
+            display: block;
+          }
+
+          & + .workspace {
+            padding-left: 0 !important;
+          }
+        }
+      }
+
+      & > .workspace {
+        flex: 1 1 auto;
+        padding-top: var(--main-content-padding-top);
+        overflow: auto;
+
+        & .width.constraint {
+          min-width: 0;
+          padding-left: 6.18%;
+        }
+
+        & > footer {
+          @chassis apply inline-block padding-y;
+          background: var(--main-footer-bg-color);
+        }
+      }
+    }
+  }
+}

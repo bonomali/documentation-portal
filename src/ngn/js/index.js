@@ -1,3 +1,5 @@
-NGN.DOM.ready(() => {
-  NGN.DOM.svg.update()
-})
+NGNX.Loader({
+  sync: [
+    './js/registries/main.js'
+  ]
+}, () => {})

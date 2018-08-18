@@ -15,23 +15,30 @@ custom-properties {
 	--main-content-padding-top: calc(var(--inline-block-margin-y) * (var(--typography-scale-ratio) * 2));
 
 	--main-sidebar-bg-color: white;
+	--main-sidebar-button-hover-bg-color: var(--grey-n00);
 
 	--main-footer-bg-color: var(--grey-n00);
+
+	--pane-border-width: 1px;
+	--pane-border-style: solid;
+	--pane-border-color: var(--grey-n04);
+
+	--pane-border: var(--pane-border-width) var(--pane-border-style) var(--pane-border-color);
 }
 
 components {
 	anchor {
 		@state initial {
-			color: var(--blue);
+			color: var(--green);
 		}
 
 		@state hover {
-			color: color-mod(var(--blue) lightness(50%));
+			color: color-mod(var(--green) lightness(44%));
 			text-decoration: underline;
 		}
 
 		@state active {
-			color: color-mod(var(--blue) lightness(44%));
+			color: color-mod(var(--green) lightness(38.2%));
 		}
 
 		@state disabled {

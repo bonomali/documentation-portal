@@ -1,0 +1,51 @@
+& > header {
+  flex: 0 0 auto;
+
+  &.primary {
+    background: var(--main-primary-header-bg-color);
+
+    & .width.constraint {
+      display: flex;
+      align-items: center;
+      @chassis apply inline-block padding-y;
+    }
+
+    & a.previous {
+      display: block;
+      margin-right: var(--inline-block-padding-x);
+      color: var(--main-primary-header-text-color);
+      border-radius: .236em;
+
+      &:hover {
+        background: var(--main-primary-header-text-color);
+        color: black;
+      }
+    }
+
+    & h1 {
+      margin: 0;
+      @chassis font-size large;
+      color: var(--main-primary-header-text-color);
+    }
+
+    & .version.tag {
+      margin-left: var(--inline-block-padding-x);
+    }
+  }
+
+  &.secondary {
+    @chassis z-index front;
+    background: var(--main-secondary-header-bg-color);
+    border-bottom: 1px solid var(--grey-n04);
+
+    @chassis font-size small;
+
+    & .width.constraint {
+      @chassis apply inline-block padding-y;
+    }
+
+    & .breadcrumb {
+      margin: 0;
+    }
+  }
+}

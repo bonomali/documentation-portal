@@ -1,0 +1,59 @@
+&.portal {
+  /*
+    This extra namespace is here to identify main layout elements enclosed
+    within a .scrollable container, since they cannot be targeted using a
+    direct descendant selector.
+  */
+  & .portal.content {
+    flex: 1 0 auto;
+    display: flex;
+  }
+
+  & footer.portal {
+    @chassis apply inline-block padding-y;
+    background: var(--main-footer-bg-color);
+  }
+
+  & .projects {
+    flex: 1 1 auto;
+
+    & .project {
+      & .title {
+        border-bottom: var(--pane-border);
+      }
+
+      & .info {
+        & .description {
+          @chassis apply inline-block margin-bottom;
+        }
+
+        & nav {
+          @chassis apply inline-block padding-y;
+
+          border: var(--pane-border);
+
+          @chassis font-size small;
+          font-weight: bold;
+
+          & a {
+            display: block;
+            @chassis apply inline-block padding;
+          }
+        }
+
+        @chassis vp-width > small {
+          display: flex;
+
+          & .description {
+            flex: 1 1 61.8%;
+            margin-right: 6.18%;
+          }
+
+          & nav {
+            flex: 1 1 38.2%;
+          }
+        }
+      }
+    }
+  }
+}
