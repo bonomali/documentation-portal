@@ -7,9 +7,9 @@ NGNX.Loader({
 })
 
 NGN.DOM.ready(() => {
-  NGN.BUS.on('*', function () {
-    console.log(this.event);
-  })
+  // NGN.BUS.on('*', function () {
+  //   console.log(this.event);
+  // })
 
   NGN.DOM.svg.update()
 })

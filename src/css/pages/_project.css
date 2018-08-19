@@ -54,6 +54,7 @@
               display: flex;
               justify-content: flex-end;
               align-items: center;
+              cursor: pointer;
 
               & h3 {
                 order: 99;
@@ -83,6 +84,14 @@
             }
 
             &.collapsed {
+              & > header {
+                opacity: .618;
+
+                &:hover {
+                  opacity: 1;
+                }
+              }
+
               & .icon {
                 &.expand {
                   display: block;

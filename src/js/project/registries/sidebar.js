@@ -4,6 +4,8 @@ const ProjectSidebar = new NGNX.VIEW.Registry({
   namespace: 'sidebar.',
 
   references: {
+    accordion: '> .content > nav',
+
     expandButton: 'button.expand',
     collapseButton: 'button.collapse'
   },
@@ -24,9 +26,21 @@ const ProjectSidebar = new NGNX.VIEW.Registry({
 
   init () {
     let {
+      accordion,
+
       expandButton,
       collapseButton
     } = this.ref
+
+    accordion.each((nav, i) => {
+      nav = NGNX.REF.create(`nav_${i}`, `${accordion.selector}:nth-child(${i + 1})`)
+
+      let header = nav.find('> header')
+
+      header.on('click', evt => {
+        nav.element.classList.toggle('collapsed')
+      })
+    })
 
     expandButton.on('click', evt => this.state = 'expanded')
     collapseButton.on('click', evt => this.state = 'collapsed')
