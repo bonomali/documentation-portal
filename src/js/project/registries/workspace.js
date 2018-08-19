@@ -25,11 +25,7 @@ const ProjectWorkspace = new NGNX.VIEW.Registry({
         collapsed: 'default'
       }
     }
-  ],
-
-  init () {
-    
-  }
+  ]
 })
 
 ProjectWorkspace.clickHandler = function (evt) {

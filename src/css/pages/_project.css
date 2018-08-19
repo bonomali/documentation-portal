@@ -195,6 +195,12 @@
           @chassis apply inline-block padding-y;
           background: var(--main-footer-bg-color);
         }
+
+        @chassis vp-width <= medium {
+          &.overlaid {
+            overflow: hidden;
+          }
+        }
       }
     }
   }

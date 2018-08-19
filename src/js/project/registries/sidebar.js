@@ -41,7 +41,9 @@ const ProjectSidebar = new NGNX.VIEW.Registry({
     collapseButton.on('click', evt => this.state = 'collapsed')
 
     this.on({
-      collapse: () => this.state = 'collapsed'
+      collapse: () => {
+        this.state = 'collapsed'
+      }
     })
   }
 })
