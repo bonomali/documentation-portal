@@ -1,4 +1,5 @@
 & > header {
+  @chassis z-index front;
   flex: 0 0 auto;
 
   &.primary {
@@ -99,7 +100,6 @@
   }
 
   &.secondary {
-    @chassis z-index front;
     background: var(--main-secondary-header-bg-color);
     border-bottom: 1px solid var(--grey-n04);
 

@@ -123,7 +123,10 @@
           width: 280px;
 
           text-align: right;
-          box-shadow: var(--inline-block-margin-x) 0 var(--inline-block-padding-x) 0 color-mod(black a(23.6%));
+          box-shadow:
+            100vw 0 0 100vw color-mod(black a(61.8%)),
+            var(--inline-block-margin-x) 0 var(--inline-block-padding-x) 0 color-mod(black a(23.6%))
+          ;
 
           & button {
             &.collapse {
