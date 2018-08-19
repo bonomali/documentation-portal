@@ -12,7 +12,7 @@
 
     & a.previous {
       display: block;
-      margin-right: var(--inline-block-padding-x);
+      margin-right: var(--inline-block-margin-x);
       color: var(--main-primary-header-text-color);
       border-radius: .236em;
 
@@ -23,13 +23,78 @@
     }
 
     & h1 {
-      margin: 0;
+      margin: 0 var(--inline-block-padding-x) 0 0;
       @chassis font-size large;
       color: var(--main-primary-header-text-color);
     }
 
     & .version.tag {
-      margin-left: var(--inline-block-padding-x);
+      margin: 0 auto 0 0;
+    }
+
+    & button.menu {
+      @chassis new button {
+        @state initial {
+          padding: 0;
+          @chassis font-size small;
+          color: white;
+          opacity: .618;
+        }
+
+        @state hover {
+          opacity: 1;
+        }
+      }
+
+      & .icon {
+        height: 2em;
+      }
+    }
+
+    & .tools {
+      display: none;
+      margin: 0 0 0 var(--inline-block-padding-x);
+    }
+
+    & chassis-control.search {
+      @chassis extend chassis-control {
+        @state initial {
+          margin: 0;
+          @chassis font-size small;
+          opacity: .618;
+          color: white;
+          background: var(--grey-c10);
+          border-radius: var(--inline-block-border-radius);
+        }
+
+        @state focus-within {
+          opacity: 1;
+          background: var(--grey-c08);
+        }
+      }
+
+      & > input {
+        margin: 0;
+        box-shadow: none;
+
+        &::placeholder {
+          color: color-mod(white a(38.2%));
+        }
+      }
+
+      & .icon {
+        color: white;
+      }
+    }
+
+    @chassis vp-width > small {
+      & button.menu {
+        display: none;
+      }
+
+      & .tools {
+        display: block;
+      }
     }
   }
 

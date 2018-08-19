@@ -7,6 +7,9 @@ custom-properties {
 	--font-family: -apple-system, BlinkMacSystemFont, 'Avenir Next', Avenir, Helvetica, Arial, sans-serif;
 	--text-color: var(--grey-c10);
 
+	--inline-block-border-radius: .236em;
+	--icon-border-radius: 2px;
+
 	--main-primary-header-bg-color: var(--grey-c09);
 	--main-primary-header-text-color: white;
 
@@ -49,8 +52,8 @@ components {
 
 	button {
 		@state initial {
-			background: var(--blue);
-			border-radius: .236em;
+			background: var(--grey-c09);
+			border-radius: var(--inline-block-border-radius);
 			color: white;
 
 			svg.icon {
@@ -59,11 +62,11 @@ components {
 		}
 
 		@state hover {
-			background: color-mod(var(--blue) lightness(55%));
+			background: color-mod(var(--grey-c09) lightness(55%));
 		}
 
 		@state active {
-			background: color-mod(var(--blue) lightness(44%));
+			background: color-mod(var(--grey-c09) lightness(44%));
 		}
 
 		@state disabled {
@@ -77,8 +80,8 @@ components {
 
 	anchor-button {
 		@state initial {
-			background: var(--blue);
-			border-radius: .236em;
+			background: var(--grey-c09);
+			border-radius: var(--inline-block-border-radius);
 			color: white;
 
 			svg.icon {
@@ -87,11 +90,11 @@ components {
 		}
 
 		@state hover {
-			background: color-mod(var(--blue) lightness(55%));
+			background: color-mod(var(--grey-c09) lightness(55%));
 		}
 
 		@state active {
-			background: color-mod(var(--blue) lightness(44%));
+			background: color-mod(var(--grey-c09) lightness(44%));
 		}
 
 		@state disabled {
@@ -102,7 +105,7 @@ components {
 	tag {
 		@state initial {
 			background: var(--grey-n10);
-			border-radius: .236em;
+			border-radius: var(--inline-block-border-radius);
 			color: white;
 
 			& svg.icon {

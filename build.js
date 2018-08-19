@@ -71,11 +71,51 @@ class CustomProductionLine extends ProductionLine {
     tasks.run()
   }
 
+  processJavascript (minify = true, cb) {
+    let tasks = new TaskRunner()
+
+    this.walk(this.paths.javascript).forEach(filepath => {
+      tasks.add(`Process ${this.localDirectory(filepath)}`, cont => {
+        let dir = path.dirname(filepath)
+        let isAsset = this.isSubdirectory(dir, path.resolve(`${this.SOURCE}/assets`))
+
+        if (isAsset) {
+          return this.copyToOutput(filepath.replace(this.SOURCE, ''), cont)
+        }
+
+        let output = this.transpile(filepath)
+
+        if (minify) {
+          output = this.minify(output.code)
+        }
+
+        this.writeFile(this.outputDirectory(filepath), this.applyHeader(output.code, 'js'), cont)
+        // this.writeFile(this.outputDirectory(filepath), output.code, cont)
+      })
+    })
+
+    tasks.on('complete', cb)
+    tasks.run()
+  }
+
+  isSubdirectory (child, parent) {
+    if (child === parent) {
+      return false
+    }
+
+    let tokens = {
+      parent: parent.split(path.sep).filter(token => token.length),
+      child: child.split(path.sep).filter(token => token.length)
+    }
+
+    return tokens.parent.every((token, i) => tokens.child[i] === token)
+  }
+
   make (devMode = false) {
     this.clean()
     this.copyAssets(true)
     this.buildHTML()
-    this.buildJavaScript()
+    this.addTask('Build JavaScript', next => this.processJavascript(!devMode, next))
     this.addTask('Build CSS', next => this.processCss(!devMode, next))
   }
 }

@@ -35,7 +35,7 @@
             align-self: flex-end;
             padding: 2px;
             border: none;
-            border-radius: 2px;
+            border-radius: var(--icon-border-radius);
 
             &:hover {
               background: var(--red);
@@ -63,11 +63,16 @@
               }
 
               & .icon {
+                border-radius: var(--icon-border-radius);
                 @chassis font-size small;
 
                 &.expand {
                   display: none;
                 }
+              }
+
+              &:hover .icon {
+                background: var(--grey-n00);
               }
             }
 
@@ -84,6 +89,8 @@
             }
 
             &.collapsed {
+              @chassis apply inline-block margin-bottom;
+
               & > header {
                 opacity: .618;
 
@@ -113,6 +120,7 @@
           position: absolute;
           top: 0;
           bottom: 0;
+          width: 280px;
 
           text-align: right;
           box-shadow: var(--inline-block-margin-x) 0 var(--inline-block-padding-x) 0 color-mod(black a(23.6%));

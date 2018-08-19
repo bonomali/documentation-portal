@@ -34,12 +34,7 @@ const ProjectSidebar = new NGNX.VIEW.Registry({
 
     accordion.each((nav, i) => {
       nav = NGNX.REF.create(`nav_${i}`, `${accordion.selector}:nth-child(${i + 1})`)
-
-      let header = nav.find('> header')
-
-      header.on('click', evt => {
-        nav.element.classList.toggle('collapsed')
-      })
+      nav.find('> header').on('click', evt => nav.element.classList.toggle('collapsed'))
     })
 
     expandButton.on('click', evt => this.state = 'expanded')
