@@ -18,8 +18,16 @@
         background: var(--main-sidebar-bg-color);
         border-right: var(--pane-border);
 
-        & button,
-        & .button {
+        & .buttons {
+          display: flex;
+          flex-direction: column;
+
+          & button {
+            border: 0;
+          }
+        }
+
+        & button {
           @chassis new button {
             @state initial {
               padding: var(--inline-block-padding-x);
@@ -33,9 +41,10 @@
 
           &.collapse {
             align-self: flex-end;
-            padding: 2px;
-            border: none;
-            border-radius: var(--icon-border-radius);
+            /* padding: 2px; */
+            border: 0;
+            /* border-radius: var(--icon-border-radius); */
+            @chassis font-size small;
 
             &:hover {
               background: var(--red);
@@ -128,6 +137,19 @@
             var(--inline-block-margin-x) 0 var(--inline-block-padding-x) 0 color-mod(black a(23.6%))
           ;
 
+          & .buttons {
+            position: absolute;
+            top: var(--inline-block-margin-x);
+            left: var(--inline-block-margin-x);
+
+            flex-direction: row;
+
+            & button {
+              @chassis font-size small;
+              border: 0;
+            }
+          }
+
           & button {
             &.collapse {
               position: absolute;
@@ -160,7 +182,7 @@
         }
 
         @chassis vp-width > small {
-          position: static !important;
+          position: relative !important;
           flex: 1 1 23.6%;
           min-width: 280px;
 
@@ -169,6 +191,21 @@
 
           & button {
             display: none !important;
+            @chassis font-size small;
+          }
+
+          & .buttons {
+            position: absolute;
+            top: var(--inline-block-margin-x);
+            right: var(--inline-block-margin-x);
+            left: auto !important;
+
+            flex-direction: row;
+            align-self: flex-end;
+
+            & button {
+              display: inline-flex !important;
+            }
           }
 
           & > .content {
@@ -183,7 +220,7 @@
 
       & > .workspace {
         flex: 1 1 auto;
-        padding-top: var(--main-content-padding-top);
+        padding-top: calc(var(--main-content-padding-top) / 2);
         overflow: scroll;
 
         & .width.constraint {

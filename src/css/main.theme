@@ -15,7 +15,7 @@ custom-properties {
 
 	--main-secondary-header-bg-color: white;
 
-	--main-content-padding-top: calc(var(--inline-block-margin-y) * (var(--typography-scale-ratio) * 2));
+	--main-content-padding-top: calc(var(--inline-block-margin-y) * (var(--typography-scale-ratio) * 3));
 
 	--main-sidebar-bg-color: white;
 	--main-sidebar-button-hover-bg-color: var(--grey-n00);
