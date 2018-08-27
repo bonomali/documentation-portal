@@ -1,5 +1,5 @@
-const ProjectSidebar = new NGNX.VIEW.Registry({
-  parent: Project,
+const ProductSidebar = new NGNX.VIEW.Registry({
+  parent: Product,
   selector: 'aside.sidebar',
   namespace: 'sidebar.',
 
@@ -25,25 +25,19 @@ const ProjectSidebar = new NGNX.VIEW.Registry({
   initialState: 'collapsed',
 
   init () {
-    let {
-      accordion,
-
-      expandButton,
-      collapseButton
-    } = this.ref
-
-    accordion.each((nav, i) => {
-      nav = NGNX.REF.create(`nav_${i}`, `${accordion.selector}:nth-child(${i + 1})`)
-      nav.find('> header').on('click', evt => nav.element.classList.toggle('collapsed'))
-    })
-
-    expandButton.on('click', evt => this.state = 'expanded')
-    collapseButton.on('click', evt => this.state = 'collapsed')
-
     this.on({
       collapse: () => {
         this.state = 'collapsed'
       }
     })
+
+    // Replace this with chassis-accordion
+    this.ref.accordion.each((nav, i) => {
+      nav = NGNX.REF.create(`nav_${i}`, `${this.ref.accordion.selector}:nth-child(${i + 1})`)
+      nav.find('> header').on('click', evt => nav.element.classList.toggle('collapsed'))
+    })
+
+    this.ref.expandButton.on('click', evt => this.state = 'expanded')
+    this.ref.collapseButton.on('click', evt => this.state = 'collapsed')
   }
 })

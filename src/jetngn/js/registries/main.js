@@ -1,6 +1,6 @@
-const NGNProject = new NGNX.VIEW.Registry({
-  selector: '.ngn.project',
-  namespace: 'ngn.project.',
+const NGNProduct = new NGNX.VIEW.Registry({
+  selector: '.ngn.product',
+  namespace: 'ngn.product.',
 
   init () {
 

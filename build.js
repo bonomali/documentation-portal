@@ -15,8 +15,17 @@ class CustomProductionLine extends ProductionLine {
 
     this.paths = {
       javascript: path.join(this.SOURCE, '/**/*.js'),
-      css: path.join(this.SOURCE, '/**/*.css')
+      css: path.join(this.SOURCE, '/**/*.css'),
+      json: path.join(this.SOURCE, '**/*.json')
     }
+  }
+
+  copyJson (cb) {
+    this.walk(this.paths.json).forEach(file => {
+      this.copyToOutput(file)
+    })
+
+    cb && cb()
   }
 
   processCss (minify = true, cb) {
@@ -113,6 +122,7 @@ class CustomProductionLine extends ProductionLine {
 
   make (devMode = false) {
     this.clean()
+    this.addTask('Copy API Data', next => this.copyJson(next))
     this.copyAssets(true)
     this.buildHTML()
     this.addTask('Build JavaScript', next => this.processJavascript(!devMode, next))

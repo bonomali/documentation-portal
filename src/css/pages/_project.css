@@ -1,4 +1,4 @@
-&.project {
+&.product {
   & main {
     & > .content {
       position: relative;

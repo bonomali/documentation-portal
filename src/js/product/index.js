@@ -1,8 +1,8 @@
 NGNX.Loader({
   sync: [
-    '/js/project/registries/main.js',
-    '/js/project/registries/sidebar.js',
-    '/js/project/registries/workspace.js'
+    '/js/product/registries/main.js',
+    '/js/product/registries/sidebar.js',
+    '/js/product/registries/workspace.js'
   ]
 })
 
