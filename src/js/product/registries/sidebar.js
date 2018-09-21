@@ -1,5 +1,5 @@
-const ProductSidebar = new NGNX.VIEW.Registry({
-  parent: Product,
+Product.view.sidebar = new NGNX.VIEW.Registry({
+  parent: Product.view,
   selector: 'aside.sidebar',
   namespace: 'sidebar.',
 

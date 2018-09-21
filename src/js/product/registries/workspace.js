@@ -1,5 +1,5 @@
-const ProductWorkspace = new NGNX.VIEW.Registry({
-  parent: Product,
+Product.view.workspace = new NGNX.VIEW.Registry({
+  parent: Product.view,
   selector: '.workspace',
   namespace: 'workspace.',
 
@@ -19,7 +19,7 @@ const ProductWorkspace = new NGNX.VIEW.Registry({
 
   reflexes: [
     {
-      registry: ProductSidebar,
+      registry: Product.view.sidebar,
       reactions: {
         expanded: 'overlaid',
         collapsed: 'default'
@@ -28,6 +28,6 @@ const ProductWorkspace = new NGNX.VIEW.Registry({
   ]
 })
 
-ProductWorkspace.clickHandler = function (evt) {
-  ProductSidebar.emit('collapse')
+Product.view.workspace.clickHandler = function (evt) {
+  Product.view.sidebar.emit('collapse')
 }
