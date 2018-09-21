@@ -1,9 +1,9 @@
-import ConstructModel from './Construct'
-import ParameterModel from './Parameter'
-import PropertyModel from './Property'
-import MethodModel from './Method'
+import ConstructModel from './Construct.js'
+import ParameterModel from './Parameter.js'
+import PropertyModel from './Property.js'
+import MethodModel from './Method.js'
 
-export default class ClassModel extends ConstructModel {
+class ClassDataModel extends ConstructModel {
   constructor (cfg = {}) {
     cfg.fields = Object.assign(cfg.fields || {}, {
       fields: {
@@ -16,4 +16,8 @@ export default class ClassModel extends ConstructModel {
 
     super(cfg)
   }
-})
+}
+
+const ClassModel = new ClassDataModel()
+
+export default ClassModel

@@ -1,7 +1,7 @@
-import SnippetModel from './Snippet'
-import ParameterModel from './Parameter'
+import SnippetModel from './Snippet.js'
+import ParameterModel from './Parameter.js'
 
-export default class EventModel extends SnippetModel {
+class EventDataModel extends SnippetModel {
   constructor (cfg = {}) {
     cfg.fields = Object.assign(cfg.fields || {}, {
       parameters: [ParameterModel],
@@ -15,3 +15,7 @@ export default class EventModel extends SnippetModel {
     super(cfg)
   }
 }
+
+const EventModel = new EventDataModel()
+
+export default EventModel

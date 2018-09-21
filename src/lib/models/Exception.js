@@ -1,7 +1,7 @@
-import SnippetModel from './Snippet'
+import SnippetModel from './Snippet.js'
 
-export default class ExceptionModel extends SnippetModel {
-  constructor (cffg = {}) {
+class ExceptionDataModel extends SnippetModel {
+  constructor (cfg = {}) {
     cfg.fields = Object.assign(cfg.fields || {}, {
       severity: String,
       message: String,
@@ -12,3 +12,7 @@ export default class ExceptionModel extends SnippetModel {
     super(cfg)
   }
 }
+
+const ExceptionModel = new ExceptionDataModel()
+
+export default ExceptionModel

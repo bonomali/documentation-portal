@@ -1,13 +1,13 @@
-import SnippetModel from './Snippet'
-import TagModel from './Tag'
-import EventModel from './Event'
-import ExceptionModel from './Exception'
+import SnippetModel from './Snippet.js'
+import TagModel from './Tag.js'
+import EventModel from './Event.js'
+import ExceptionModel from './Exception.js'
 
 export default class ConstructModel extends SnippetModel {
   constructor (cfg = {}) {
     cfg.fieldls = Object.assign(cfg.fields || {}, {
       tags: [TagModel],
-      events: [EventModel]
+      events: [EventModel],
       exceptions: [ExceptionModel]
     })
 

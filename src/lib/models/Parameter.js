@@ -1,8 +1,8 @@
-import SnippetModel from './Snippet'
+import SnippetModel from './Snippet.js'
 
-export default class ParameterModel extends SnippetModel {
+class ParameterDataModel extends SnippetModel {
   constructor (cfg = {}) {
-    cfg.fields = Object.asssign(cfg.fields || {}, {
+    cfg.fields = Object.assign(cfg.fields || {}, {
       default: String,
       required: {
         type: Boolean,
@@ -15,3 +15,7 @@ export default class ParameterModel extends SnippetModel {
     super(cfg)
   }
 }
+
+let ParameterModel = new ParameterDataModel()
+
+export default ParameterModel

@@ -11,4 +11,4 @@ const ReturnModel = new NGN.DATA.Model({
   }
 })
 
-export { ReturnModel }
+export default ReturnModel

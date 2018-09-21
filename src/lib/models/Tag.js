@@ -1,6 +1,6 @@
-import CodePositionModel from './CodePosition'
+import CodePositionModel from './CodePosition.js'
 
-const TagModel = new NGN.DATA.Mode({
+const TagModel = new NGN.DATA.Model({
   fields: {
     label: String,
     decription: String,
@@ -14,5 +14,4 @@ const TagModel = new NGN.DATA.Mode({
   }
 })
 
-
-export { TagModel }
+export default TagModel

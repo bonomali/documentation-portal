@@ -5,4 +5,4 @@ const CodePositionModel = new NGN.DATA.Model({
   }
 })
 
-export { CodePositionModel }
+export default CodePositionModel

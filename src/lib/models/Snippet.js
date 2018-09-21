@@ -1,4 +1,4 @@
-import CodePositionModel from './CodePosition'
+import CodePositionModel from './CodePosition.js'
 
 export default class SnippetModel extends NGN.DATA.Model {
   constructor (cfg = {}) {

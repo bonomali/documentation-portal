@@ -1,7 +1,7 @@
-import SnippetModel from './Snippet'
+import SnippetModel from './Snippet.js'
 
-export default class PropertyModel extends SnippetModel {
-  cosntructor (cfg = {}) {
+class PropertyDataModel extends SnippetModel {
+  constructor (cfg = {}) {
     cfg.fields = Object.assign(cfg.fields || {}, {
       default: String,
       readable: {
@@ -29,3 +29,7 @@ export default class PropertyModel extends SnippetModel {
     super(cfg)
   }
 }
+
+const PropertyModel = new PropertyDataModel()
+
+export default PropertyModel

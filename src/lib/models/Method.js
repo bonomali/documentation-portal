@@ -1,8 +1,8 @@
-import ConstructModel from './Construct'
-import ParameterModel from './Parameter'
-import ReturnModel from './Return'
+import ConstructModel from './Construct.js'
+import ParameterModel from './Parameter.js'
+import ReturnModel from './Return.js'
 
-export default class MethodModel extends ConstructModel {
+class MethodDataModel extends ConstructModel {
   constructor (cfg = {}) {
     cfg.fields = Object.assign(cfg.fields || {}, {
       arguments: [ParameterModel],
@@ -35,3 +35,7 @@ export default class MethodModel extends ConstructModel {
     super(cfg)
   }
 }
+
+const MethodModel = new MethodDataModel()
+
+export default MethodModel
