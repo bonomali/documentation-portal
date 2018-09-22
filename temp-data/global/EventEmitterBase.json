@@ -1,0 +1,1136 @@
+{
+  "type": "class",
+  "label": "EventEmitterBase",
+  "description": "The maximum number of listeners for a single event.",
+  "code": "class BrowserEmitter { // eslint-disable-line no-unused-vars\r\n  /**\r\n   * @constructor\r\n   * ```\r\n   * let EE = new EventEmitter()\r\n   * ```\r\n   * This is a protected class. It is most commonly instantiated through\r\n   * the NGN namespace (i.e. `new NGN.EventEmitter()`). However; it is\r\n   * designed for use within the NGN library, not directly as an event emitter.\r\n   * Use with caution.\r\n   */\r\n  constructor (cfg) {\r\n    cfg = cfg || {}\r\n\r\n    Object.defineProperties(this, {\r\n      handlers: NGN.private({}),\r\n      adhoc: NGN.private({}),\r\n      maxlisteners: NGN.private(cfg.defaultMaxListeners || 25)\r\n    })\r\n  }\r\n\r\n  /**\r\n   * @property {object} subscribers\r\n   * An array of all subscribers which currently have a registered event handler.\r\n   * @warning This is a UI-only method.\r\n   */\r\n  get subscribers () {\r\n    let subscriberList = {}\r\n\r\n    for (let eventName in this.handlers) {\r\n      subscriberList[eventName] = {\r\n        handler: this.handlers[eventName].length,\r\n        adhoc: 0\r\n      }\r\n    }\r\n\r\n    for (let eventName in this.adhoc) {\r\n      subscriberList[eventName] = subscriberList[eventName] || {\r\n        handler: 0\r\n      }\r\n\r\n      subscriberList[eventName].adhoc = this.adhoc[eventName].length\r\n    }\r\n\r\n    return subscriberList\r\n  }\r\n\r\n  /**\r\n   * @property defaultMaxListeners\r\n   * The maximum number of listeners for a single event.\r\n   */\r\n  get defaultMaxListeners () {\r\n    return this.maxlisteners\r\n  }\r\n\r\n  set defaultMaxListeners (value) {\r\n    this.maxlisteners = value\r\n  }\r\n\r\n  /**\r\n   * @method {number} listenerCount\r\n   * The number of listeners for a specific event.\r\n   * @param {string} eventName\r\n   * The name of the event to count listeners for.\r\n   */\r\n  listenerCount (eventName) {\r\n    return (this.handlers[eventName] || []).length +\r\n      (this.adhoc[eventName] || []).length\r\n  }\r\n\r\n  /**\r\n   * @method getMaxListeners\r\n   * A node-like reference to the #defaultMaxListeners value.\r\n   * @return {number}\r\n   */\r\n  getMaxListeners () {\r\n    return this.defaultMaxListeners\r\n  }\r\n\r\n  /**\r\n   * @method setMaxListeners\r\n   * A node-like reference to the #defaultMaxListeners value (setter).\r\n   */\r\n  setMaxListeners (value) {\r\n    this.defaultMaxListeners = value\r\n  }\r\n\r\n  /**\r\n   * @method eventNames\r\n   * A node-like reference providing an array of recognized event names.\r\n   * @return {array}\r\n   */\r\n  eventNames () {\r\n    let handlers = Object.keys(this.handlers)\r\n    let adhoc = Object.keys(this.adhoc)\r\n    return NGN.dedupe(handlers.concat(adhoc))\r\n  }\r\n\r\n  /**\r\n   * @method listeners\r\n   * Returns the raw listener methods for the event.\r\n   * @param {string} eventName\r\n   * Name of the event to retrieve listeners for.\r\n   * @return {array}\r\n   */\r\n  listeners (eventName) {\r\n    let handlers = this.handlers[eventName] || []\r\n    let adhoc = this.adhoc[eventName] || []\r\n    return handlers.concat(adhoc)\r\n  }\r\n\r\n  /**\r\n   * @method addListener\r\n   * Create a new event handler for the specified event.\r\n   * @param  {string|object} eventName\r\n   * Name of the event to listen for.\r\n   * If an object is passed, this method will automatically setup a #pool.\r\n   * @param  {Function} handler\r\n   * The method responsible for responding to the event.\r\n   * This is ignored if eventName is an object.\r\n   */\r\n  addListener (eventName, callback) {\r\n    if (typeof eventName === 'object') {\r\n      return this.pool(eventName)\r\n    }\r\n\r\n    this.handlers[eventName] = this.handlers[eventName] || []\r\n    this.handlers[eventName].unshift(callback)\r\n    this.emit('newListener', eventName, callback)\r\n\r\n    if (this.listenerCount(eventName) > this.maxlisteners) {\r\n      throw new Error('Maximum event listeners exceeded. Use setMaxListeners() to adjust the level.')\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method prependListener\r\n   * This is the same as #addListener, except the event handler is added to the end of the queue.\r\n   * @param  {string|object} eventName\r\n   * Name of the event to listen for.\r\n   * If an object is passed, this method will automatically setup a #pool.\r\n   * @param  {Function} handler\r\n   * The method responsible for responding to the event.\r\n   * This is ignored if eventName is an object.\r\n   */\r\n  prependListener (eventName, callback) {\r\n    if (typeof eventName === 'object') {\r\n      return this.pool(eventName)\r\n    }\r\n\r\n    this.handlers[eventName] = this.handlers[eventName] || []\r\n    this.handlers[eventName].push(callback)\r\n    this.emit('newListener', eventName, callback)\r\n\r\n    if (this.listenerCount(eventName) > this.maxlisteners) {\r\n      throw new Error('Maximum event listeners exceeded. Use setMaxListeners() to adjust the level.')\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method onceListener\r\n   * Create a new event handler for the specified event. The\r\n   * handler will be removed immediately after it is executed. This\r\n   * effectively listens for an event to happen once and only once\r\n   * before the handler is destroyed.\r\n   * @param  {string} eventName\r\n   * Name of the event to listen for.\r\n   * @param  {Function} handler\r\n   * The method responsible for responding to the event.\r\n   */\r\n  once (eventName, callback) {\r\n    this.adhoc[eventName] = this.adhoc[eventName] || []\r\n    this.adhoc[eventName].push(callback)\r\n    this.emit('newListener', eventName, callback)\r\n\r\n    if (this.listenerCount(eventName) > this.maxlisteners) {\r\n      throw new Error('Maximum event listeners exceeded. Use setMaxListeners() to adjust the level.')\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method prependOnceListener\r\n   * A node-like reference to the #once method, adding events to the\r\n   * beginning of the event list (processed before others) instead of the end.\r\n   * @param  {string} eventName\r\n   * Name of the event to listen for.\r\n   * @param  {Function} handler\r\n   * The method responsible for responding to the event.\r\n   */\r\n  prependOnceListener (eventName, callback) {\r\n    this.adhoc[eventName] = this.adhoc[eventName] || []\r\n    this.adhoc[eventName].unshift(callback)\r\n    this.emit('newListener', eventName, callback)\r\n\r\n    if (this.listenerCount(eventName) > this.maxlisteners) {\r\n      throw new Error('Maximum event listeners exceeded. Use setMaxListeners() to adjust the level.')\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method removeListener\r\n   * Remove an event handler. If no handler is specified, all handlers for\r\n   * the specified event will be removed.\r\n   * @param {string} eventName\r\n   * Name of the event to remove.\r\n   * @param {function} [handlerFn]\r\n   * The handler function to remove from the event handlers.\r\n   */\r\n  removeListener (eventName, handlerFn) {\r\n    this.deleteEventHandler('handlers', eventName, handlerFn)\r\n    this.deleteEventHandler('adhoc', eventName, handlerFn)\r\n  }\r\n\r\n  /**\r\n   * @method deleteEventHandler\r\n   * Remove a specific event handler.\r\n   * @param {string} type\r\n   * Either `handler` (multi-use events) or `adhoc` (one-time events)\r\n   * @param {string} eventName\r\n   * Name of the event to remove.\r\n   * @param {function} handlerFn\r\n   * The handler function to remove from the event handlers.\r\n   * @private\r\n   */\r\n  deleteEventHandler (type, eventName, handlerFn) {\r\n    let scope = this[type]\r\n\r\n    if (scope[eventName]) {\r\n      if (!handlerFn) {\r\n        delete scope[eventName]\r\n        return\r\n      }\r\n\r\n      let result = []\r\n      scope[eventName].forEach((handler) => {\r\n        if (handler.toString() !== handlerFn.toString()) {\r\n          result.push(handler)\r\n        }\r\n      })\r\n\r\n      if (result.length === 0) {\r\n        delete scope[eventName]\r\n        return\r\n      }\r\n\r\n      scope[eventName] = result\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method removeAllListeners\r\n   * Remove all event handlers from the EventEmitter (both regular and adhoc).\r\n   */\r\n  removeAllListeners (eventName = null) {\r\n    if (eventName !== null) {\r\n      delete this.handlers[eventName]\r\n      delete this.adhoc[eventName]\r\n    } else {\r\n      this.handlers = {}\r\n      this.adhoc = {}\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method emit\r\n   * Fires an event. This method accepts one or more arguments. The\r\n   * first argument is always the event name, followed by any number\r\n   * of payload arguments.\r\n   *\r\n   * Example:\r\n   * ```\r\n   * const EE = new NGN.EventEmitter()\r\n   *\r\n   * EE.emit('someevent', {payload: 1}, {payload: 2})\r\n   * ```\r\n   * The example above triggers an event called `someevent` and applies\r\n   * the remaining two arguments to any event handlers.\r\n   * @param {string} eventName\r\n   * The name of the event to trigger.\r\n   */\r\n  emit () {\r\n    let args = NGN.slice(arguments)\r\n    const eventName = args.shift()\r\n    const events = this.getAllEvents(eventName)\r\n\r\n    if (typeof eventName === 'symbol') {\r\n      events.push(eventName)\r\n    }\r\n\r\n    let scope = {\r\n      event: eventName\r\n    }\r\n\r\n    for (let name = 0; name < events.length; name++) {\r\n      let adhocEvent = this.adhoc[events[name]]\r\n\r\n      // Adhoc event handling\r\n      if (adhocEvent) {\r\n        delete this.adhoc[events[name]]\r\n\r\n        while (adhocEvent.length > 0) {\r\n          let fn = adhocEvent.pop()\r\n\r\n          scope.handler = fn\r\n\r\n          fn.apply(scope, args)\r\n        }\r\n      }\r\n\r\n      // Regular event handling\r\n      let handler = this.handlers[events[name]]\r\n\r\n      if (handler) {\r\n        for (let fn = 0; fn < handler.length; fn++) {\r\n          scope.handler = handler[fn]\r\n          handler[fn].apply(scope, args)\r\n        }\r\n      }\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method getAllEvents\r\n   * Returns all of the events that match an event name. The event name\r\n   * may contain wildcards (i.e. `*`) or it can be a regular expression.\r\n   * @param  {string|regexp} eventName\r\n   * A string or regular expression defining which event names to identify.\r\n   * A string value containing an asterisk (*) will be converted to a regular\r\n   * expression for simplistic wildcard event handling purposes.\r\n   * @return {array}\r\n   * An array of unique event names with handlers or adhoc handlers.\r\n   * @private\r\n   */\r\n  getAllEvents (eventName) {\r\n    const regularEvents = Object.keys(this.handlers)\r\n    const adhocEvents = Object.keys(this.adhoc)\r\n    let allEvents = NGN.dedupe(regularEvents.concat(adhocEvents))\r\n\r\n    allEvents = allEvents.filter(function (event) {\r\n      // If the event is an exact match, don't filter it out.\r\n      if (event === eventName) {\r\n        return true\r\n      }\r\n\r\n      // If the event is a regexp/wildcard, further processing is necessary.\r\n      if (NGN.typeof(event) === 'regexp' || event.indexOf('*') >= 0) {\r\n        // Convert wildcard events to a regular expression.\r\n        if (NGN.typeof(event) !== 'regexp') {\r\n          event = new RegExp(event.replace(/\\./g, '\\\\.').replace(/\\*/g, '.*'), 'g')\r\n        }\r\n        // If the event name matches the event, keep it.\r\n        return event.test(eventName)\r\n      }\r\n\r\n      // None of the criteria were met. Ignore the event.\r\n      return false\r\n    })\r\n\r\n    return allEvents\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {
+    "newListener": {
+      "type": "event",
+      "label": "newListener",
+      "description": null,
+      "code": "this.emit('newListener', eventName, callback)",
+      "start": {
+        "line": 200,
+        "column": 4
+      },
+      "end": {
+        "line": 200,
+        "column": 49
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": null,
+          "code": "eventName",
+          "start": {
+            "line": 200,
+            "column": 29
+          },
+          "end": {
+            "line": 200,
+            "column": 38
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "argument",
+          "label": "callback",
+          "description": null,
+          "code": "callback",
+          "start": {
+            "line": 200,
+            "column": 40
+          },
+          "end": {
+            "line": 200,
+            "column": 48
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    }
+  },
+  "start": {
+    "line": 8,
+    "column": 15
+  },
+  "end": {
+    "line": 368,
+    "column": 1
+  },
+  "flags": [
+    ""
+  ],
+  "authors": [],
+  "sourcefile": "emitter/BrowserEmitter.js",
+  "extends": null,
+  "configuration": {},
+  "properties": {
+    "handlers": {
+      "type": "property",
+      "label": "handlers",
+      "description": null,
+      "code": "handlers: NGN.private({})",
+      "start": {
+        "line": 23,
+        "column": 6
+      },
+      "end": {
+        "line": 23,
+        "column": 31
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "adhoc": {
+      "type": "property",
+      "label": "adhoc",
+      "description": null,
+      "code": "adhoc: NGN.private({})",
+      "start": {
+        "line": 24,
+        "column": 6
+      },
+      "end": {
+        "line": 24,
+        "column": 28
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "maxlisteners": {
+      "type": "property",
+      "label": "maxlisteners",
+      "description": null,
+      "code": "maxlisteners: NGN.private(cfg.defaultMaxListeners || 25)",
+      "start": {
+        "line": 25,
+        "column": 6
+      },
+      "end": {
+        "line": 25,
+        "column": 62
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "subscribers": {
+      "type": "property",
+      "label": "subscribers",
+      "description": null,
+      "code": "get subscribers () {\r\n    let subscriberList = {}\r\n\r\n    for (let eventName in this.handlers) {\r\n      subscriberList[eventName] = {\r\n        handler: this.handlers[eventName].length,\r\n        adhoc: 0\r\n      }\r\n    }\r\n\r\n    for (let eventName in this.adhoc) {\r\n      subscriberList[eventName] = subscriberList[eventName] || {\r\n        handler: 0\r\n      }\r\n\r\n      subscriberList[eventName].adhoc = this.adhoc[eventName].length\r\n    }\r\n\r\n    return subscriberList\r\n  }",
+      "start": {
+        "line": 34,
+        "column": 2
+      },
+      "end": {
+        "line": 53,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "defaultMaxListeners": {
+      "type": "property",
+      "label": "defaultMaxListeners",
+      "description": null,
+      "code": "set defaultMaxListeners (value) {\r\n    this.maxlisteners = value\r\n  }",
+      "start": {
+        "line": 63,
+        "column": 2
+      },
+      "end": {
+        "line": 65,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": "``` let EE = new EventEmitter\n```\nThis is a protected class. It is most commonly instantiated through\nthe NGN namespace (i.e. `new NGN.EventEmitter()`). However; it is\ndesigned for use within the NGN library, not directly as an event emitter.\nUse with caution.",
+      "code": "constructor (cfg) {\r\n    cfg = cfg || {}\r\n\r\n    Object.defineProperties(this, {\r\n      handlers: NGN.private({}),\r\n      adhoc: NGN.private({}),\r\n      maxlisteners: NGN.private(cfg.defaultMaxListeners || 25)\r\n    })\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 19,
+        "column": 2
+      },
+      "end": {
+        "line": 27,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "cfg": {
+          "type": "argument",
+          "label": "cfg",
+          "description": null,
+          "code": "cfg",
+          "start": {
+            "line": 19,
+            "column": 15
+          },
+          "end": {
+            "line": 19,
+            "column": 18
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "listenerCount": {
+      "type": "method",
+      "label": "listenerCount",
+      "description": "The number of listeners for a specific event.",
+      "code": "listenerCount (eventName) {\r\n    return (this.handlers[eventName] || []).length +\r\n      (this.adhoc[eventName] || []).length\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 73,
+        "column": 2
+      },
+      "end": {
+        "line": 76,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "The name of the event to count listeners for.",
+          "code": "eventName",
+          "start": {
+            "line": 73,
+            "column": 17
+          },
+          "end": {
+            "line": 73,
+            "column": 26
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getMaxListeners": {
+      "type": "method",
+      "label": "getMaxListeners",
+      "description": "A node-like reference to the #defaultMaxListeners value.",
+      "code": "getMaxListeners () {\r\n    return this.defaultMaxListeners\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 83,
+        "column": 2
+      },
+      "end": {
+        "line": 85,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "number",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "setMaxListeners": {
+      "type": "method",
+      "label": "setMaxListeners",
+      "description": "A node-like reference to the #defaultMaxListeners value .",
+      "code": "setMaxListeners (value) {\r\n    this.defaultMaxListeners = value\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 91,
+        "column": 2
+      },
+      "end": {
+        "line": 93,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": null,
+          "code": "value",
+          "start": {
+            "line": 91,
+            "column": 19
+          },
+          "end": {
+            "line": 91,
+            "column": 24
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "eventNames": {
+      "type": "method",
+      "label": "eventNames",
+      "description": "A node-like reference providing an array of recognized event names.",
+      "code": "eventNames () {\r\n    let handlers = Object.keys(this.handlers)\r\n    let adhoc = Object.keys(this.adhoc)\r\n    return NGN.dedupe(handlers.concat(adhoc))\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 100,
+        "column": 2
+      },
+      "end": {
+        "line": 104,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "array",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "listeners": {
+      "type": "method",
+      "label": "listeners",
+      "description": "Returns the raw listener methods for the event.",
+      "code": "listeners (eventName) {\r\n    let handlers = this.handlers[eventName] || []\r\n    let adhoc = this.adhoc[eventName] || []\r\n    return handlers.concat(adhoc)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 113,
+        "column": 2
+      },
+      "end": {
+        "line": 117,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "Name of the event to retrieve listeners for.",
+          "code": "eventName",
+          "start": {
+            "line": 113,
+            "column": 13
+          },
+          "end": {
+            "line": 113,
+            "column": 22
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "array",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "addListener": {
+      "type": "method",
+      "label": "addListener",
+      "description": "Create a new event handler for the specified event.",
+      "code": "addListener (eventName, callback) {\r\n    if (typeof eventName === 'object') {\r\n      return this.pool(eventName)\r\n    }\r\n\r\n    this.handlers[eventName] = this.handlers[eventName] || []\r\n    this.handlers[eventName].unshift(callback)\r\n    this.emit('newListener', eventName, callback)\r\n\r\n    if (this.listenerCount(eventName) > this.maxlisteners) {\r\n      throw new Error('Maximum event listeners exceeded. Use setMaxListeners() to adjust the level.')\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 129,
+        "column": 2
+      },
+      "end": {
+        "line": 141,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "Name of the event to listen for.\nIf an object is passed, this method will automatically setup a #pool.",
+          "code": "eventName",
+          "start": {
+            "line": 129,
+            "column": 15
+          },
+          "end": {
+            "line": 129,
+            "column": 24
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "argument",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.\nThis is ignored if eventName is an object.",
+          "code": "callback",
+          "start": {
+            "line": 129,
+            "column": 26
+          },
+          "end": {
+            "line": 129,
+            "column": 34
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function",
+          "required": true,
+          "enum": null
+        },
+        "handler": {
+          "type": "argument",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.\nThis is ignored if eventName is an object.",
+          "code": "callback",
+          "start": {
+            "line": 129,
+            "column": 26
+          },
+          "end": {
+            "line": 129,
+            "column": 34
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "prependListener": {
+      "type": "method",
+      "label": "prependListener",
+      "description": "This is the same as #addListener, except the event handler is added to the end of the queue.",
+      "code": "prependListener (eventName, callback) {\r\n    if (typeof eventName === 'object') {\r\n      return this.pool(eventName)\r\n    }\r\n\r\n    this.handlers[eventName] = this.handlers[eventName] || []\r\n    this.handlers[eventName].push(callback)\r\n    this.emit('newListener', eventName, callback)\r\n\r\n    if (this.listenerCount(eventName) > this.maxlisteners) {\r\n      throw new Error('Maximum event listeners exceeded. Use setMaxListeners() to adjust the level.')\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 153,
+        "column": 2
+      },
+      "end": {
+        "line": 165,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "Name of the event to listen for.\nIf an object is passed, this method will automatically setup a #pool.",
+          "code": "eventName",
+          "start": {
+            "line": 153,
+            "column": 19
+          },
+          "end": {
+            "line": 153,
+            "column": 28
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "argument",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.\nThis is ignored if eventName is an object.",
+          "code": "callback",
+          "start": {
+            "line": 153,
+            "column": 30
+          },
+          "end": {
+            "line": 153,
+            "column": 38
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function",
+          "required": true,
+          "enum": null
+        },
+        "handler": {
+          "type": "argument",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.\nThis is ignored if eventName is an object.",
+          "code": "callback",
+          "start": {
+            "line": 153,
+            "column": 30
+          },
+          "end": {
+            "line": 153,
+            "column": 38
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "once": {
+      "type": "method",
+      "label": "once",
+      "description": "Create a new event handler for the specified event. The\nhandler will be removed immediately after it is executed. This\neffectively listens for an event to happen once and only once\nbefore the handler is destroyed.",
+      "code": "once (eventName, callback) {\r\n    this.adhoc[eventName] = this.adhoc[eventName] || []\r\n    this.adhoc[eventName].push(callback)\r\n    this.emit('newListener', eventName, callback)\r\n\r\n    if (this.listenerCount(eventName) > this.maxlisteners) {\r\n      throw new Error('Maximum event listeners exceeded. Use setMaxListeners() to adjust the level.')\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 178,
+        "column": 2
+      },
+      "end": {
+        "line": 186,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "Name of the event to listen for.",
+          "code": "eventName",
+          "start": {
+            "line": 178,
+            "column": 8
+          },
+          "end": {
+            "line": 178,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "argument",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.",
+          "code": "callback",
+          "start": {
+            "line": 178,
+            "column": 19
+          },
+          "end": {
+            "line": 178,
+            "column": 27
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function",
+          "required": true,
+          "enum": null
+        },
+        "handler": {
+          "type": "argument",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.",
+          "code": "callback",
+          "start": {
+            "line": 178,
+            "column": 19
+          },
+          "end": {
+            "line": 178,
+            "column": 27
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "prependOnceListener": {
+      "type": "method",
+      "label": "prependOnceListener",
+      "description": "A node-like reference to the #once method, adding events to the\nbeginning of the event list  instead of the end.",
+      "code": "prependOnceListener (eventName, callback) {\r\n    this.adhoc[eventName] = this.adhoc[eventName] || []\r\n    this.adhoc[eventName].unshift(callback)\r\n    this.emit('newListener', eventName, callback)\r\n\r\n    if (this.listenerCount(eventName) > this.maxlisteners) {\r\n      throw new Error('Maximum event listeners exceeded. Use setMaxListeners() to adjust the level.')\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 197,
+        "column": 2
+      },
+      "end": {
+        "line": 205,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "Name of the event to listen for.",
+          "code": "eventName",
+          "start": {
+            "line": 197,
+            "column": 23
+          },
+          "end": {
+            "line": 197,
+            "column": 32
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "argument",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.",
+          "code": "callback",
+          "start": {
+            "line": 197,
+            "column": 34
+          },
+          "end": {
+            "line": 197,
+            "column": 42
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function",
+          "required": true,
+          "enum": null
+        },
+        "handler": {
+          "type": "argument",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.",
+          "code": "callback",
+          "start": {
+            "line": 197,
+            "column": 34
+          },
+          "end": {
+            "line": 197,
+            "column": 42
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "removeListener": {
+      "type": "method",
+      "label": "removeListener",
+      "description": "Remove an event handler. If no handler is specified, all handlers for\nthe specified event will be removed.",
+      "code": "removeListener (eventName, handlerFn) {\r\n    this.deleteEventHandler('handlers', eventName, handlerFn)\r\n    this.deleteEventHandler('adhoc', eventName, handlerFn)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 216,
+        "column": 2
+      },
+      "end": {
+        "line": 219,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "Name of the event to remove.",
+          "code": "eventName",
+          "start": {
+            "line": 216,
+            "column": 18
+          },
+          "end": {
+            "line": 216,
+            "column": 27
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "handlerFn": {
+          "type": "method",
+          "label": "handlerFn",
+          "description": "The handler function to remove from the event handlers.",
+          "code": "@param {function} [handlerFn]\nThe handler function to remove from the event handlers.",
+          "start": {
+            "line": 216,
+            "column": 2
+          },
+          "end": {
+            "line": 219,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "deleteEventHandler": {
+      "type": "method",
+      "label": "deleteEventHandler",
+      "description": "Remove a specific event handler.",
+      "code": "deleteEventHandler (type, eventName, handlerFn) {\r\n    let scope = this[type]\r\n\r\n    if (scope[eventName]) {\r\n      if (!handlerFn) {\r\n        delete scope[eventName]\r\n        return\r\n      }\r\n\r\n      let result = []\r\n      scope[eventName].forEach((handler) => {\r\n        if (handler.toString() !== handlerFn.toString()) {\r\n          result.push(handler)\r\n        }\r\n      })\r\n\r\n      if (result.length === 0) {\r\n        delete scope[eventName]\r\n        return\r\n      }\r\n\r\n      scope[eventName] = result\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 232,
+        "column": 2
+      },
+      "end": {
+        "line": 255,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "type": {
+          "type": "argument",
+          "label": "type",
+          "description": "Either `handler`",
+          "code": "type",
+          "start": {
+            "line": 232,
+            "column": 22
+          },
+          "end": {
+            "line": 232,
+            "column": 26
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": [
+            "multi-use events) or `adhoc` (one-time events"
+          ]
+        },
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "Name of the event to remove.",
+          "code": "eventName",
+          "start": {
+            "line": 232,
+            "column": 28
+          },
+          "end": {
+            "line": 232,
+            "column": 37
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "handlerFn": {
+          "type": "method",
+          "label": "handlerFn",
+          "description": "The handler function to remove from the event handlers.",
+          "code": "@param {function} handlerFn\nThe handler function to remove from the event handlers.",
+          "start": {
+            "line": 232,
+            "column": 2
+          },
+          "end": {
+            "line": 255,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "removeAllListeners": {
+      "type": "method",
+      "label": "removeAllListeners",
+      "description": "Remove all event handlers from the EventEmitter .",
+      "code": "removeAllListeners (eventName = null) {\r\n    if (eventName !== null) {\r\n      delete this.handlers[eventName]\r\n      delete this.adhoc[eventName]\r\n    } else {\r\n      this.handlers = {}\r\n      this.adhoc = {}\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 261,
+        "column": 2
+      },
+      "end": {
+        "line": 269,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": null,
+          "code": "eventName = null",
+          "start": {
+            "line": 261,
+            "column": 22
+          },
+          "end": {
+            "line": 261,
+            "column": 38
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "object",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "emit": {
+      "type": "method",
+      "label": "emit",
+      "description": "Fires an event. This method accepts one or more arguments. The\nfirst argument is always the event name, followed by any number\nof payload arguments.\n\nExample:\n```\nconst EE = new NGN.EventEmitter\n\nEE.emit('someevent', {payload: 1}, {payload: 2})\n```\nThe example above triggers an event called `someevent` and applies\nthe remaining two arguments to any event handlers.",
+      "code": "emit () {\r\n    let args = NGN.slice(arguments)\r\n    const eventName = args.shift()\r\n    const events = this.getAllEvents(eventName)\r\n\r\n    if (typeof eventName === 'symbol') {\r\n      events.push(eventName)\r\n    }\r\n\r\n    let scope = {\r\n      event: eventName\r\n    }\r\n\r\n    for (let name = 0; name < events.length; name++) {\r\n      let adhocEvent = this.adhoc[events[name]]\r\n\r\n      // Adhoc event handling\r\n      if (adhocEvent) {\r\n        delete this.adhoc[events[name]]\r\n\r\n        while (adhocEvent.length > 0) {\r\n          let fn = adhocEvent.pop()\r\n\r\n          scope.handler = fn\r\n\r\n          fn.apply(scope, args)\r\n        }\r\n      }\r\n\r\n      // Regular event handling\r\n      let handler = this.handlers[events[name]]\r\n\r\n      if (handler) {\r\n        for (let fn = 0; fn < handler.length; fn++) {\r\n          scope.handler = handler[fn]\r\n          handler[fn].apply(scope, args)\r\n        }\r\n      }\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 288,
+        "column": 2
+      },
+      "end": {
+        "line": 327,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "The name of the event to trigger.",
+          "code": "emit () {\r\n    let args = NGN.slice(arguments)\r\n    const eventName = args.shift()\r\n    const events = this.getAllEvents(eventName)\r\n\r\n    if (typeof eventName === 'symbol') {\r\n      events.push(eventName)\r\n    }\r\n\r\n    let scope = {\r\n      event: eventName\r\n    }\r\n\r\n    for (let name = 0; name < events.length; name++) {\r\n      let adhocEvent = this.adhoc[events[name]]\r\n\r\n      // Adhoc event handling\r\n      if (adhocEvent) {\r\n        delete this.adhoc[events[name]]\r\n\r\n        while (adhocEvent.length > 0) {\r\n          let fn = adhocEvent.pop()\r\n\r\n          scope.handler = fn\r\n\r\n          fn.apply(scope, args)\r\n        }\r\n      }\r\n\r\n      // Regular event handling\r\n      let handler = this.handlers[events[name]]\r\n\r\n      if (handler) {\r\n        for (let fn = 0; fn < handler.length; fn++) {\r\n          scope.handler = handler[fn]\r\n          handler[fn].apply(scope, args)\r\n        }\r\n      }\r\n    }\r\n  }",
+          "start": {
+            "line": 288,
+            "column": 2
+          },
+          "end": {
+            "line": 327,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getAllEvents": {
+      "type": "method",
+      "label": "getAllEvents",
+      "description": "Returns all of the events that match an event name. The event name\nmay contain wildcards  or it can be a regular expression.",
+      "code": "getAllEvents (eventName) {\r\n    const regularEvents = Object.keys(this.handlers)\r\n    const adhocEvents = Object.keys(this.adhoc)\r\n    let allEvents = NGN.dedupe(regularEvents.concat(adhocEvents))\r\n\r\n    allEvents = allEvents.filter(function (event) {\r\n      // If the event is an exact match, don't filter it out.\r\n      if (event === eventName) {\r\n        return true\r\n      }\r\n\r\n      // If the event is a regexp/wildcard, further processing is necessary.\r\n      if (NGN.typeof(event) === 'regexp' || event.indexOf('*') >= 0) {\r\n        // Convert wildcard events to a regular expression.\r\n        if (NGN.typeof(event) !== 'regexp') {\r\n          event = new RegExp(event.replace(/\\./g, '\\\\.').replace(/\\*/g, '.*'), 'g')\r\n        }\r\n        // If the event name matches the event, keep it.\r\n        return event.test(eventName)\r\n      }\r\n\r\n      // None of the criteria were met. Ignore the event.\r\n      return false\r\n    })\r\n\r\n    return allEvents\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 341,
+        "column": 2
+      },
+      "end": {
+        "line": 367,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "A string or regular expression defining which event names to identify.\nA string value containing an asterisk  will be converted to a regular\nexpression for simplistic wildcard event handling purposes.",
+          "code": "eventName",
+          "start": {
+            "line": 341,
+            "column": 16
+          },
+          "end": {
+            "line": 341,
+            "column": 25
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|regexp",
+          "required": true,
+          "enum": [
+            "*"
+          ]
+        }
+      },
+      "returnType": "array",
+      "returnDescription": "null An array of unique event names with handlers or adhoc handlers.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    }
+  }
+}

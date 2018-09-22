@@ -3,7 +3,7 @@ const TagModel = new NGN.DATA.Model({
     label: String,
     decription: String,
     type: String,
-    raw: String
+    rawJson: String
   },
 
   virtuals: {

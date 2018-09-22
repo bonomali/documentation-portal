@@ -1,0 +1,520 @@
+{
+  "type": "class",
+  "label": "NGN.DATA.VirtualField",
+  "description": "This will always return the value of the virtual field, but it may only\r\n  be _set_ to a synchronous function that returns a value.",
+  "code": "class NGNVirtualDataField extends DataField { // eslint-disable-line\r\n  constructor (cfg) {\r\n    cfg = cfg || {}\r\n\r\n    if (!(cfg.model instanceof NGN.DATA.Entity)) {\r\n      NGN.WARN('No model specified for the virtual field to reference.')\r\n    }\r\n\r\n    // Remove unnecessary config values\r\n    delete cfg.required\r\n    delete cfg.default\r\n    delete cfg.min\r\n    delete cfg.minimum\r\n    delete cfg.max\r\n    delete cfg.maximum\r\n    delete cfg.range\r\n    delete cfg.rule\r\n    delete cfg.rules\r\n    delete cfg.validators\r\n    delete cfg.pattern\r\n\r\n    super(cfg)\r\n\r\n    this.METADATA.AUDITABLE = false\r\n    this.METADATA.fieldType = 'virtual'\r\n\r\n    /**\r\n     * @cfg {boolean} [cache=true]\r\n     * By default, virtual fields _associated with a model_ will cache results\r\n     * to prevent unnecessary function calls. The cache is cleared whenever a\r\n     * local data field is modified.\r\n     *\r\n     * Caching can substantially reduce processing time in large data sets\r\n     * by calling methods less often. In most use cases, it will provide a\r\n     * substantial performance gain. However; since virtual fields can also\r\n     * leverage variables and methods that are not a part of the data model,\r\n     * caching may prevent the value from updating as expected. While this case\r\n     * may occur less often, it can occur. If you suspect caching is interfering\r\n     * with a virtual field value, it can be disabled by setting this to `false`.\r\n     */\r\n    this.METADATA.caching = NGN.coalesce(cfg.cache, true)\r\n\r\n    /**\r\n     * @cfg {NGN.DATA.Model|NGN.DATA.Store|Object} scope\r\n     * The model, store, or object that will be referenceable within the\r\n     * virtual field #method. The model will be available in the `this` scope.\r\n     */\r\n    this.METADATA.scope = NGN.coalesce(cfg.scope, cfg.model, this)\r\n\r\n    /**\r\n     * @cfg {Function} method\r\n     * The method used to generate a value.\r\n     * This is an asynchronous method the returns a value (of any type).\r\n     */\r\n    const me = this\r\n    const handlerFn = cfg.method\r\n\r\n    this.METADATA.virtualMethod = function () {\r\n      return handlerFn.apply(me.METADATA.scope, ...arguments)\r\n    }\r\n\r\n    // Add smart-cache support\r\n    this.METADATA.CACHEKEY = Symbol('no.cache')\r\n    this.METADATA.cachedValue = this.METADATA.CACHEKEY\r\n\r\n    // Only add caching support if a model is associated\r\n    if (this.METADATA.caching && this.model) {\r\n      // Create a method for identifying which local data fields\r\n      // need to be monitored (for caching)\r\n      const localFieldPattern = /this(\\.(.[^\\W]+)|\\[['\"]{1}(.*)+['\"]{1}\\])/g\r\n\r\n      // Returns a Set of fieldnames used in the virtual function.\r\n      let monitoredFields = new Set()\r\n      let content = handlerFn.toString()\r\n      let iterator = localFieldPattern.exec(content)\r\n\r\n      while (iterator !== null) {\r\n        let field = NGN.coalesce(iterator[2], iterator[3])\r\n\r\n        if (this.model.METADATA.knownFieldNames.has(field)) {\r\n          monitoredFields.add(field)\r\n        }\r\n\r\n        content = content.replace(localFieldPattern, '')\r\n        iterator = localFieldPattern.exec(content)\r\n      }\r\n\r\n      this.METADATA.model.pool('field.', {\r\n        update: (change) => {\r\n          if (change.field && monitoredFields.has(change.field.name)) {\r\n            this.METADATA.cachedValue = this.METADATA.CACHEKEY\r\n            this.emit('cache.clear', this)\r\n          }\r\n        },\r\n\r\n        remove: (field) => {\r\n          if (monitoredFields.has(field.name)) {\r\n            this.METADATA.cachedValue = this.METADATA.CACHEKEY\r\n            this.emit('cache.clear', this)\r\n            NGN.ERROR(`The ${this.name} virtual field uses the ${field.name} field, which was removed. This virtual field may no longer work.`)\r\n          }\r\n        },\r\n\r\n        create: (field) => {\r\n          if (monitoredFields.has(field.name)) {\r\n            this.METADATA.cachedValue = this.METADATA.CACHEKEY\r\n            this.emit('cache.clear', this)\r\n            NGN.INFO(`The ${this.name} virtual field uses the ${field.name} field, which was added.`)\r\n          }\r\n        }\r\n      })\r\n    }\r\n  }\r\n\r\n  get auditable () {\r\n    NGN.WARN('Virtual fields do not support the auditable property.')\r\n    return false\r\n  }\r\n\r\n  set auditable (value) {\r\n    NGN.WARN('Virtual fields do not support the auditable property.')\r\n  }\r\n\r\n  /**\r\n   * @property {any} value\r\n   * This will always return the value of the virtual field, but it may only\r\n   * be _set_ to a synchronous function that returns a value.\r\n   */\r\n  get value () {\r\n    if (this.METADATA.caching) {\r\n      if (this.METADATA.cachedValue !== this.METADATA.CACHEKEY) {\r\n        return this.METADATA.cachedValue\r\n      } else {\r\n        this.METADATA.cachedValue = this.METADATA.virtualMethod()\r\n        return this.METADATA.cachedValue\r\n      }\r\n    }\r\n\r\n    return this.METADATA.virtualMethod()\r\n  }\r\n\r\n  set value (value) {\r\n    NGN.WARN('Cannot set the value of a virtual field (read only).')\r\n  }\r\n\r\n  get required () {\r\n    NGN.WARN('Virtual fields do not support the required property.')\r\n    return false\r\n  }\r\n\r\n  set required (value) {\r\n    NGN.WARN('Virtual fields do not support the required property.')\r\n  }\r\n\r\n  get isNew () {\r\n    NGN.WARN('Virtual fields do not support the isNew property.')\r\n    return false\r\n  }\r\n\r\n  get default () {\r\n    NGN.WARN('Virtual fields do not have default values.')\r\n    return undefined\r\n  }\r\n\r\n  set default (value) {\r\n    NGN.WARN('Virtual fields do not have default values.')\r\n    return undefined\r\n  }\r\n\r\n  get violatedRule () {\r\n    return 'None'\r\n  }\r\n\r\n  get valid () {\r\n    NGN.WARN('Virtual fields are always valid.')\r\n    return true\r\n  }\r\n\r\n  get modified () {\r\n    NGN.WARN('modified attribute does nothing on virtual fields.')\r\n    return false\r\n  }\r\n\r\n  allowInvalid () {\r\n    NGN.WARN('allowInvalid() unavailable for virtual fields.')\r\n  }\r\n\r\n  disallowInvalid () {\r\n    NGN.WARN('disallowInvalid() unavailable for virtual fields.')\r\n  }\r\n\r\n  autocorrectInput () {\r\n    NGN.WARN('autocorrectInput() unavailable for virtual fields.')\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {
+    "cache.clear": {
+      "type": "event",
+      "label": "cache.clear",
+      "description": null,
+      "code": "this.emit('cache.clear', this)",
+      "start": {
+        "line": 148,
+        "column": 12
+      },
+      "end": {
+        "line": 148,
+        "column": 42
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload1": {
+          "type": "argument",
+          "label": "payload1",
+          "description": null,
+          "code": "this",
+          "start": {
+            "line": 148,
+            "column": 37
+          },
+          "end": {
+            "line": 148,
+            "column": 41
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    }
+  },
+  "start": {
+    "line": 42,
+    "column": 15
+  },
+  "end": {
+    "line": 236,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/field/VirtualField.js",
+  "extends": "DataField",
+  "configuration": {
+    "cache": {
+      "type": "property",
+      "label": "cache",
+      "description": "By default, virtual fields _associated with a model_ will cache results\nto prevent unnecessary function calls. The cache is cleared whenever a\nlocal data field is modified.\n\nCaching can substantially reduce processing time in large data sets\nby calling methods less often. In most use cases, it will provide a\nsubstantial performance gain. However; since virtual fields can also\nleverage variables and methods that are not a part of the data model,\ncaching may prevent the value from updating as expected. While this case\nmay occur less often, it can occur. If you suspect caching is interfering\nwith a virtual field value, it can be disabled by setting this to `false`.",
+      "code": "this.METADATA.caching = NGN.coalesce(cfg.cache, true)",
+      "start": {
+        "line": 82,
+        "column": 18
+      },
+      "end": {
+        "line": 82,
+        "column": 25
+      },
+      "flags": [],
+      "authors": [],
+      "default": "true",
+      "datatype": "boolean",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": false
+    },
+    "scope": {
+      "type": "property",
+      "label": "scope",
+      "description": "The model, store, or object that will be referenceable within the\nvirtual field #method. The model will be available in the `this` scope.",
+      "code": "this.METADATA.scope = NGN.coalesce(cfg.scope, cfg.model, this)",
+      "start": {
+        "line": 89,
+        "column": 18
+      },
+      "end": {
+        "line": 89,
+        "column": 23
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "ngn.data.model|ngn.data.store|object",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": false
+    }
+  },
+  "properties": {
+    "AUDITABLE": {
+      "type": "property",
+      "label": "AUDITABLE",
+      "description": null,
+      "code": "this.METADATA.AUDITABLE = false",
+      "start": {
+        "line": 65,
+        "column": 18
+      },
+      "end": {
+        "line": 65,
+        "column": 27
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "fieldType": {
+      "type": "property",
+      "label": "fieldType",
+      "description": null,
+      "code": "this.METADATA.fieldType = 'virtual'",
+      "start": {
+        "line": 66,
+        "column": 18
+      },
+      "end": {
+        "line": 66,
+        "column": 27
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "virtualMethod": {
+      "type": "property",
+      "label": "virtualMethod",
+      "description": null,
+      "code": "this.METADATA.virtualMethod = function () {\r\n      return handlerFn.apply(me.METADATA.scope, ...arguments)\r\n    }",
+      "start": {
+        "line": 99,
+        "column": 18
+      },
+      "end": {
+        "line": 99,
+        "column": 31
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "CACHEKEY": {
+      "type": "property",
+      "label": "CACHEKEY",
+      "description": null,
+      "code": "this.METADATA.CACHEKEY = Symbol('no.cache')",
+      "start": {
+        "line": 104,
+        "column": 18
+      },
+      "end": {
+        "line": 104,
+        "column": 26
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "cachedValue": {
+      "type": "property",
+      "label": "cachedValue",
+      "description": null,
+      "code": "this.METADATA.cachedValue = this.METADATA.CACHEKEY",
+      "start": {
+        "line": 105,
+        "column": 18
+      },
+      "end": {
+        "line": 105,
+        "column": 29
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "auditable": {
+      "type": "property",
+      "label": "auditable",
+      "description": null,
+      "code": "set auditable (value) {\r\n    NGN.WARN('Virtual fields do not support the auditable property.')\r\n  }",
+      "start": {
+        "line": 161,
+        "column": 2
+      },
+      "end": {
+        "line": 163,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "value": {
+      "type": "property",
+      "label": "value",
+      "description": null,
+      "code": "set value (value) {\r\n    NGN.WARN('Cannot set the value of a virtual field (read only).')\r\n  }",
+      "start": {
+        "line": 183,
+        "column": 2
+      },
+      "end": {
+        "line": 185,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "required": {
+      "type": "property",
+      "label": "required",
+      "description": null,
+      "code": "set required (value) {\r\n    NGN.WARN('Virtual fields do not support the required property.')\r\n  }",
+      "start": {
+        "line": 192,
+        "column": 2
+      },
+      "end": {
+        "line": 194,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "isNew": {
+      "type": "property",
+      "label": "isNew",
+      "description": null,
+      "code": "get isNew () {\r\n    NGN.WARN('Virtual fields do not support the isNew property.')\r\n    return false\r\n  }",
+      "start": {
+        "line": 196,
+        "column": 2
+      },
+      "end": {
+        "line": 199,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "boolean",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "default": {
+      "type": "property",
+      "label": "default",
+      "description": null,
+      "code": "set default (value) {\r\n    NGN.WARN('Virtual fields do not have default values.')\r\n    return undefined\r\n  }",
+      "start": {
+        "line": 206,
+        "column": 2
+      },
+      "end": {
+        "line": 209,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "violatedRule": {
+      "type": "property",
+      "label": "violatedRule",
+      "description": null,
+      "code": "get violatedRule () {\r\n    return 'None'\r\n  }",
+      "start": {
+        "line": 211,
+        "column": 2
+      },
+      "end": {
+        "line": 213,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "string",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "valid": {
+      "type": "property",
+      "label": "valid",
+      "description": null,
+      "code": "get valid () {\r\n    NGN.WARN('Virtual fields are always valid.')\r\n    return true\r\n  }",
+      "start": {
+        "line": 215,
+        "column": 2
+      },
+      "end": {
+        "line": 218,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "boolean",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "modified": {
+      "type": "property",
+      "label": "modified",
+      "description": null,
+      "code": "get modified () {\r\n    NGN.WARN('modified attribute does nothing on virtual fields.')\r\n    return false\r\n  }",
+      "start": {
+        "line": 220,
+        "column": 2
+      },
+      "end": {
+        "line": 223,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "boolean",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor (cfg) {\r\n    cfg = cfg || {}\r\n\r\n    if (!(cfg.model instanceof NGN.DATA.Entity)) {\r\n      NGN.WARN('No model specified for the virtual field to reference.')\r\n    }\r\n\r\n    // Remove unnecessary config values\r\n    delete cfg.required\r\n    delete cfg.default\r\n    delete cfg.min\r\n    delete cfg.minimum\r\n    delete cfg.max\r\n    delete cfg.maximum\r\n    delete cfg.range\r\n    delete cfg.rule\r\n    delete cfg.rules\r\n    delete cfg.validators\r\n    delete cfg.pattern\r\n\r\n    super(cfg)\r\n\r\n    this.METADATA.AUDITABLE = false\r\n    this.METADATA.fieldType = 'virtual'\r\n\r\n    /**\r\n     * @cfg {boolean} [cache=true]\r\n     * By default, virtual fields _associated with a model_ will cache results\r\n     * to prevent unnecessary function calls. The cache is cleared whenever a\r\n     * local data field is modified.\r\n     *\r\n     * Caching can substantially reduce processing time in large data sets\r\n     * by calling methods less often. In most use cases, it will provide a\r\n     * substantial performance gain. However; since virtual fields can also\r\n     * leverage variables and methods that are not a part of the data model,\r\n     * caching may prevent the value from updating as expected. While this case\r\n     * may occur less often, it can occur. If you suspect caching is interfering\r\n     * with a virtual field value, it can be disabled by setting this to `false`.\r\n     */\r\n    this.METADATA.caching = NGN.coalesce(cfg.cache, true)\r\n\r\n    /**\r\n     * @cfg {NGN.DATA.Model|NGN.DATA.Store|Object} scope\r\n     * The model, store, or object that will be referenceable within the\r\n     * virtual field #method. The model will be available in the `this` scope.\r\n     */\r\n    this.METADATA.scope = NGN.coalesce(cfg.scope, cfg.model, this)\r\n\r\n    /**\r\n     * @cfg {Function} method\r\n     * The method used to generate a value.\r\n     * This is an asynchronous method the returns a value (of any type).\r\n     */\r\n    const me = this\r\n    const handlerFn = cfg.method\r\n\r\n    this.METADATA.virtualMethod = function () {\r\n      return handlerFn.apply(me.METADATA.scope, ...arguments)\r\n    }\r\n\r\n    // Add smart-cache support\r\n    this.METADATA.CACHEKEY = Symbol('no.cache')\r\n    this.METADATA.cachedValue = this.METADATA.CACHEKEY\r\n\r\n    // Only add caching support if a model is associated\r\n    if (this.METADATA.caching && this.model) {\r\n      // Create a method for identifying which local data fields\r\n      // need to be monitored (for caching)\r\n      const localFieldPattern = /this(\\.(.[^\\W]+)|\\[['\"]{1}(.*)+['\"]{1}\\])/g\r\n\r\n      // Returns a Set of fieldnames used in the virtual function.\r\n      let monitoredFields = new Set()\r\n      let content = handlerFn.toString()\r\n      let iterator = localFieldPattern.exec(content)\r\n\r\n      while (iterator !== null) {\r\n        let field = NGN.coalesce(iterator[2], iterator[3])\r\n\r\n        if (this.model.METADATA.knownFieldNames.has(field)) {\r\n          monitoredFields.add(field)\r\n        }\r\n\r\n        content = content.replace(localFieldPattern, '')\r\n        iterator = localFieldPattern.exec(content)\r\n      }\r\n\r\n      this.METADATA.model.pool('field.', {\r\n        update: (change) => {\r\n          if (change.field && monitoredFields.has(change.field.name)) {\r\n            this.METADATA.cachedValue = this.METADATA.CACHEKEY\r\n            this.emit('cache.clear', this)\r\n          }\r\n        },\r\n\r\n        remove: (field) => {\r\n          if (monitoredFields.has(field.name)) {\r\n            this.METADATA.cachedValue = this.METADATA.CACHEKEY\r\n            this.emit('cache.clear', this)\r\n            NGN.ERROR(`The ${this.name} virtual field uses the ${field.name} field, which was removed. This virtual field may no longer work.`)\r\n          }\r\n        },\r\n\r\n        create: (field) => {\r\n          if (monitoredFields.has(field.name)) {\r\n            this.METADATA.cachedValue = this.METADATA.CACHEKEY\r\n            this.emit('cache.clear', this)\r\n            NGN.INFO(`The ${this.name} virtual field uses the ${field.name} field, which was added.`)\r\n          }\r\n        }\r\n      })\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 43,
+        "column": 2
+      },
+      "end": {
+        "line": 154,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "cfg": {
+          "type": "argument",
+          "label": "cfg",
+          "description": null,
+          "code": "cfg",
+          "start": {
+            "line": 43,
+            "column": 15
+          },
+          "end": {
+            "line": 43,
+            "column": 18
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "allowInvalid": {
+      "type": "method",
+      "label": "allowInvalid",
+      "description": null,
+      "code": "allowInvalid () {\r\n    NGN.WARN('allowInvalid() unavailable for virtual fields.')\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 225,
+        "column": 2
+      },
+      "end": {
+        "line": 227,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "disallowInvalid": {
+      "type": "method",
+      "label": "disallowInvalid",
+      "description": null,
+      "code": "disallowInvalid () {\r\n    NGN.WARN('disallowInvalid() unavailable for virtual fields.')\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 229,
+        "column": 2
+      },
+      "end": {
+        "line": 231,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "autocorrectInput": {
+      "type": "method",
+      "label": "autocorrectInput",
+      "description": null,
+      "code": "autocorrectInput () {\r\n    NGN.WARN('autocorrectInput() unavailable for virtual fields.')\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 233,
+        "column": 2
+      },
+      "end": {
+        "line": 235,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

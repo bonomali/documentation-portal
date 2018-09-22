@@ -1,0 +1,2301 @@
+{
+  "type": "class",
+  "label": "NGN.EventEmitter",
+  "description": "The EventEmitter is an extandable event driver non-DOM objects, such as\ndata models, objects, and other common elements of JavaScript programming.\n\nThe NGN.EventEmitter is based on and compatible with the [Node.js EventEmitter].\nIt contains additional event management capabilities, which are available\nin browser _and_ Node.js environments.",
+  "code": "class EventEmitter extends EEmitter {\r\n  constructor () {\r\n    super()\r\n\r\n    // const INSTANCE = Symbol('instance')\r\n\r\n    Object.defineProperties(this, {\r\n      // META: NGN.get(() => this[INSTANCE]),\r\n\r\n      META: NGN.private({\r\n        queued: {},\r\n        collectionQueue: {},\r\n        thresholdQueue: {},\r\n        defaultTTL: -1,\r\n        wildcardEvents: new Set()\r\n      }),\r\n\r\n      /**\r\n       * @method setTTL\r\n       * Set a default time-to-live for event handlers (in milliseconds).\r\n       * After the TTL period elapses, event handlers are removed.\r\n       * By default, there is no TTL (`-1`).\r\n       * @param {number} ttl\r\n       * The number of milliseconds before an event handler is automatically\r\n       * removed. This value may be `-1` (no TTL/never expires) or a value\r\n       * greater than `0`.\r\n       */\r\n      setTTL: NGN.const((ttl = -1) => {\r\n        if (ttl === 0) {\r\n          NGN.WARN('NGN.EventEmitter#TTL cannot be 0.')\r\n          return\r\n        }\r\n\r\n        this.META.defaultTTL = ttl\r\n      }),\r\n\r\n      /**\r\n       * @alias off\r\n       * Remove an event handler. If no handler is specified, all handlers for\r\n       * the specified event will be removed.\r\n       * This is a shortcut for #removeListener.\r\n       * @param {string} eventName\r\n       * Name of the event to remove.\r\n       * @param {function} [handlerFn]\r\n       * The handler function to remove from the event handlers.\r\n       */\r\n      off: NGN.public((eventName, handlerFn) => {\r\n        if (NGN.typeof(eventName) === 'array') {\r\n          for (let i = 0; i < eventName.length; i++) {\r\n            this.off(eventName[i], handlerFn)\r\n          }\r\n\r\n          return\r\n        }\r\n\r\n        let l = this.listeners(eventName)\r\n\r\n        if (!NGN.isFn(handlerFn)) {\r\n          return this.clear(eventName)\r\n        }\r\n\r\n        let wrappedHandlerFn = this.wrapEventHandlerWithScope(eventName, handlerFn)\r\n\r\n        if (l.indexOf(wrappedHandlerFn) < 0) {\r\n          for (let i = 0; i < l.length; i++) {\r\n            if (l[i].toString() === wrappedHandlerFn.toString()) {\r\n              this.META.wildcardEvents.delete(eventName)\r\n              // this.removeListener(eventName, handlerFn)\r\n              this.removeListener(eventName, l[i], false)\r\n              break\r\n            }\r\n          }\r\n        } else {\r\n          this.META.wildcardEvents.delete(eventName)\r\n          this.removeListener(eventName, handlerFn)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method deprecate\r\n       * Provides a deprecation notice for the specified event.\r\n       * Automatically emits the appropriate \"replacement\" event\r\n       * if a replacement event is configured. If no replacement\r\n       * event is configured, the deprecation notice will be written\r\n       * to the console but no replacement event will be triggered.\r\n       * @param {string} deprecatedEventName\r\n       * The name of the deprecated event.\r\n       * @param {string} [replacementEventName]\r\n       * The name of the new event.\r\n       */\r\n      deprecate: NGN.const((deprecatedEventName, replacementEventName) => {\r\n        const me = this\r\n\r\n        this.on(deprecatedEventName, function () {\r\n          NGN.WARN(`${deprecatedEventName} is deprecated. ` + (!replacementEventName ? '' : `Use ${replacementEventName} instead.`))\r\n\r\n          if (replacementEventName) {\r\n            let args = NGN.slice(arguments)\r\n\r\n            args.shift()\r\n            args.unshift(replacementEventName)\r\n\r\n            me.emit.apply(me, args)\r\n          }\r\n        })\r\n      }),\r\n\r\n      /**\r\n       * @method pool\r\n       * A helper command to create multiple related subscribers\r\n       * all at once. This is a convenience function.\r\n       * @property {string} [prefix]\r\n       * Supply a prefix to be added to every event. For example,\r\n       * `myScope.` would turn `someEvent` into `myScope.someEvent`.\r\n       * @property {Object} subscriberObject\r\n       * A key:value object where the key is the name of the\r\n       * unprefixed event and the key is the handler function.\r\n       * A value can be an object, allowing for nesting events. For example:\r\n       *\r\n       * ```js\r\n       * NGN.BUS.pool('prefix.', {\r\n       *   deep: {\r\n       *     nested: {\r\n       *       eventName: function () {\r\n       *         console.log('event triggered')\r\n       *       }\r\n       *     }\r\n       *   }\r\n       * })\r\n       *\r\n       * NGN.BUS.emit('prefix.deep.nested.eventName') // <-- Outputs \"event triggered\"\r\n       * ```\r\n       * @private\r\n       */\r\n      pool: NGN.privateconst(function (prefix, group) {\r\n        if (typeof prefix !== 'string') {\r\n          group = prefix\r\n          prefix = ''\r\n        }\r\n\r\n        let pool = {}\r\n\r\n        for (let eventName in group) {\r\n          let topic = `${NGN.coalesce(prefix, '')}${eventName}`\r\n\r\n          if (NGN.isFn(group[eventName])) {\r\n            this.increaseMaxListeners()\r\n\r\n            pool[eventName] = this.on(topic, group[eventName])\r\n          } else if (typeof group[eventName] === 'object') {\r\n            this.pool(`${topic}.`, group[eventName])\r\n          } else {\r\n            NGN.WARN(`${topic} could not be pooled in the event emitter because it's value is not a function.`)\r\n          }\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method attach\r\n       * Attach a function to a topic. This can be used\r\n       * to forward events in response to asynchronous functions.\r\n       *\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * myAsyncDataFetch(NGN.BUS.attach('topicName'))\r\n       * ```\r\n       *\r\n       * This is the same as:\r\n       *\r\n       * ```js\r\n       * myAsyncCall(function(data){\r\n       *  NGN.BUS.emit('topicName', data)\r\n       * })\r\n       * ```\r\n       * @param {string} eventName\r\n       * The name of the event to attach a handler method to.\r\n       * @param {boolean} [preventDefaultAction=false]\r\n       * Setting this to `true` will execute a `event.preventDefault()` before\r\n       * attaching the handler.\r\n       * @returns {function}\r\n       * Returns a function that will automatically be associated with an event.\r\n       */\r\n      attach: NGN.const(function (eventName, preventDefaultAction) {\r\n        preventDefaultAction = NGN.coalesce(preventDefaultAction, false)\r\n\r\n        return (e) => {\r\n          if (preventDefaultAction && !NGN.nodelike) {\r\n            e.preventDefault()\r\n          }\r\n\r\n          this.emit(eventName, ...arguments)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method increaseMaxListeners\r\n       * Increase the number of maximum listeners.\r\n       * @param {Number} [value = 1]\r\n       * The number of events the max listener account will be increased by.\r\n       * @private\r\n       */\r\n      increaseMaxListeners: NGN.private((count = 1) => {\r\n        this.setMaxListeners(this.getMaxListeners() + count)\r\n      }),\r\n\r\n      /**\r\n       * @method decreaseMaxListeners\r\n       * Decrease the number of maximum listeners.\r\n       * @param {Number} [value = 1]\r\n       * The number of events the max listener account will be decreased by.\r\n       * @private\r\n       */\r\n      decreaseMaxListeners: NGN.private((count = 1) => {\r\n        this.setMaxListeners(this.getMaxListeners() - count)\r\n      }),\r\n\r\n      /**\r\n       * @method forward\r\n       * A special subscriber that fires one or more event in response to\r\n       * to an event. This is used to bubble events up/down an event chain.\r\n       *\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * NGN.BUS.forward('sourceEvent', ['someEvent','anotherEvent'], {payload:true})\r\n       * ```\r\n       * When `sourceEvent` is published, the bind method triggers `someEvent` and\r\n       * `anotherEvent`, passing the payload object to `someEvent` and\r\n       * `anotherEvent` subscribers simultaneously.\r\n       *\r\n       * To forward an event to another EventEmitter, see #relay.\r\n       * @param {String} sourceEvent\r\n       * The event to subscribe to.\r\n       * @param {String|Array} triggeredEvent\r\n       * An event or array of events to fire in response to the sourceEvent.\r\n       * @param {any} data\r\n       * Optional data to pass to each bound event handler.\r\n       * @returns {Object}\r\n       * Returns an object with a single `remove()` method.\r\n       */\r\n      forward: NGN.const(function (eventName, triggers, payload) {\r\n        triggers = NGN.forceArray(triggers)\r\n\r\n        let me = this\r\n        let listener = function () {\r\n          let args = NGN.slice(arguments)\r\n\r\n          if (payload) {\r\n            args.push(payload)\r\n          }\r\n\r\n          me.emit(triggers, ...args)\r\n        }\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(eventName, listener)\r\n\r\n        // Provide handle back for removal of topic\r\n        return {\r\n          remove: () => {\r\n            this.decreaseMaxListeners()\r\n            this.off(eventName, listener)\r\n          }\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * This relays an entire event to a different event emitter.\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * let emitterA = new NGN.EventEmitter()\r\n       * let emitterB = new NGN.EventEmitter()\r\n       *\r\n       * emitterA.relay('my.event', emitterB)\r\n       *\r\n       * emitterB.on('my.event', () => { console.log('Emitter B heard the event!') })\r\n       *\r\n       * emitterA.emit('my.event') // Outputs \"Emitter B heard the event!\"\r\n       * ```\r\n       * @param  {string} eventName\r\n       * The name of the event to listen for.\r\n       * @param  {NGN.EventEmitter} targetEmitter\r\n       * The emitter to relay the event to.\r\n       * @param {string} [prefix]\r\n       * An optional prefix to prepend to the eventName.\r\n       * @param {string} [postfix]\r\n       * An optional postfix to append to the eventName.\r\n       */\r\n      relay: NGN.const(function (eventName, targetEmitter, prefix = null, postfix = null) {\r\n        let eventNameList = NGN.forceArray(eventName)\r\n\r\n        for (let i = 0; i < eventNameList.length; i++) {\r\n          let eventName = eventNameList[i]\r\n\r\n          this.on(eventName, function () {\r\n            if (NGN.typeof(this.event) === 'symbol') {\r\n              if (prefix !== null || postfix !== null) {\r\n                NGN.INFO('Cannot relay a symbol-based event with a prefix/postfix.')\r\n              }\r\n\r\n              targetEmitter.emit(...arguments)\r\n            } else {\r\n              targetEmitter.emit(`${NGN.coalesce(prefix, '')}${this.event}${NGN.coalesce(postfix, '')}`, ...arguments)\r\n            }\r\n          })\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * This relays an entire event to a different event emitter. This is\r\n       * the same as #relay, but the event handler is removed after the\r\n       * first invocation of the event.\r\n       *\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * let emitterA = new NGN.EventEmitter()\r\n       * let emitterB = new NGN.EventEmitter()\r\n       *\r\n       * emitterA.relayOnce('my.event', emitterB)\r\n       *\r\n       * emitterB.on('my.event', () => { console.log('Emitter B heard the event!') })\r\n       *\r\n       * emitterA.emit('my.event') // Outputs \"Emitter B heard the event!\"\r\n       * emitterA.emit('my.event') // Does nothing\r\n       * ```\r\n       * @param  {string} eventName\r\n       * The name of the event to listen for.\r\n       * @param  {NGN.EventEmitter} targetEmitter\r\n       * The emitter to relay the event to.\r\n       * @param {string} [prefix]\r\n       * An optional prefix to prepend to the eventName.\r\n       * @param {string} [postfix]\r\n       * An optional postfix to append to the eventName.\r\n       */\r\n      relayOnce: NGN.const(function (eventName, targetEmitter, prefix = null, postfix = null) {\r\n        let eventNameList = NGN.forceArray(eventName)\r\n\r\n        for (let i = 0; i < eventNameList.length; i++) {\r\n          let eventName = eventNameList[i]\r\n\r\n          this.once(eventName, function () {\r\n            if (NGN.typeof(this.event) === 'symbol') {\r\n              if (prefix !== null || postfix !== null) {\r\n                NGN.INFO('Cannot relay a symbol-based event with a prefix/postfix.')\r\n              }\r\n\r\n              targetEmitter.emit(...arguments)\r\n            } else {\r\n              targetEmitter.emit(`${NGN.coalesce(prefix, '')}${this.event}${NGN.coalesce(postfix, '')}`, ...arguments)\r\n            }\r\n          })\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method delayEmit\r\n       * This method waits for the specified duration, then publishes an\r\n       * event once. This will publish the event only once at the end of the\r\n       * wait period, even if the event is triggered multiple times. This can\r\n       * be useful when working with many events triggered in rapid succession.\r\n       *\r\n       * For example, an NGN.DATA.Model representing a person may be used to\r\n       * track a user profile. The NGN.DATA.Model fires an event called `field.update`\r\n       * every time a data field is modified. In many cases, a user may update\r\n       * multiple fields of their profile using a form with a \"Save\" button.\r\n       * Instead of generating a new \"save\" (to disk, to memory, to an API, etc)\r\n       * operation for each field, the publishOnce event can wait until all\r\n       * changes are made before running the save operation.\r\n       *\r\n       * ```js\r\n       * // Create a data model representing a person.\r\n       * var Person = new NGN.DATA.Model({....})\r\n       *\r\n       * // Create a new person record for a user.\r\n       * var user = new Person()\r\n       *\r\n       * // When the user is modified, save the data.\r\n       * user.on('field.update', function () {\r\n       *   // Wait 300 milliseconds to trigger the save event\r\n       *   NGN.BUS.delayEmit('user.save', 300)\r\n       * })\r\n       *\r\n       * // Save the user using an API\r\n       * NGN.BUS.on('user.save', function () {\r\n       *   NGN.NET.put({\r\n       *     url: 'https://my.api.com/user',\r\n       *     json: user.data\r\n       *   })\r\n       * })\r\n       *\r\n       * // Modify the record attributes (which are blank by default)\r\n       * user.firstname = 'John'\r\n       * user.lastname = 'Doe'\r\n       * user.age = 42\r\n       *\r\n       * // Make another update 1 second later\r\n       * setTimeout(function () {\r\n       *   user.age = 32\r\n       * }, 1000)\r\n       * ```\r\n       *\r\n       * The code above sets up a model and record. Then it listens to the record\r\n       * for field updates. Each time it recognizes an update, it queues the \"save\"\r\n       * event. When the queue matures, it fires the `user.save` event.\r\n       *\r\n       * The first `field.update` is triggered when `user.firstname = 'John'` runs.\r\n       * This initiates a queue for `user.save`, set to mature in 300 millisenconds.\r\n       * Next, a `field.update` is triggered when `user.lastname = 'Doe'` runs.\r\n       * This time, since the queue for `user.save` is already initiated, notthing\r\n       * new happens. Finally, a `field.update` is triggered when `user.age = 42`\r\n       * runs. Just like the last one, nothing happens since the `user.save` queue\r\n       * is already active.\r\n       *\r\n       * The `user.save` queue \"matures\" after 300 milliseconds. This means after\r\n       * 300 milliseconds have elapsed, the `user.save` event is triggered. In this\r\n       * example, it means the `NGN.NET.put()` code will be executed. As a result,\r\n       * all 3 change (firstname, lastname, and age) will be complete before the\r\n       * API request is executed. The queue is cleared immediately.\r\n       *\r\n       * The final update occurs 1 second later (700 milliseconds after the queue\r\n       * matures). This triggers a `field.update`, but since the queue is no\r\n       * longer active, it is re-initiated. 300 milliseconds later, the `user.save`\r\n       * event is fired again, thus executing the API request again (1.3 seconds\r\n       * in total).\r\n       * @param {string} eventName\r\n       * The event/topic to publish/emit.\r\n       * @param {Number} [delay=300]\r\n       * The number of milliseconds to wait before firing the event.\r\n       * @param {Any} [payload]\r\n       * An optional payload, such as data to be passed to an event handler.\r\n       */\r\n      delayEmit: NGN.const(function (eventName, delay) {\r\n        if (!this.META.queued.hasOwnProperty(eventName)) {\r\n          let args = NGN.slice(arguments)\r\n          args.splice(1, 1)\r\n\r\n          this.META.queued[eventName] = setTimeout(() => {\r\n            delete this.META.queued[eventName]\r\n            this.emit(...args)\r\n          }, delay)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method getInternalCollectionId\r\n       * Returns a unique ID for special collections.\r\n       * @param {object} collection\r\n       * The collection to generate an ID for.\r\n       * @private\r\n       */\r\n      getInternalCollectionId: NGN.privateconst(function (collection) {\r\n        return Symbol(collection)\r\n        // let time = (new Date()).getTime().toString()\r\n        // let rand = Math.random().toString()\r\n        // let key = Object.keys(collection).length + 1\r\n        //\r\n        // while (collection.hasOwnProperty(`${key.toString()}${time}${rand}`)) {\r\n        //   key++\r\n        // }\r\n        //\r\n        // return `${key.toString()}${time}${rand}`\r\n      }),\r\n\r\n      /**\r\n       * @method handleCollectionTrigger\r\n       * A method to manage #chain event handlers.\r\n       * @private\r\n       */\r\n      handleCollectionTrigger: NGN.privateconst(function (eventName, key) {\r\n        let me = this\r\n\r\n        return function () {\r\n          // Use setTimeout to simulate nextTick\r\n          setTimeout(() => {\r\n            let cq = me.META.collectionQueue\r\n\r\n            if (cq[key]) {\r\n              cq[key].remainingqueue.delete(eventName)\r\n\r\n              if (cq[key].remainingqueue.size === 0) {\r\n                cq[key].remainingqueue = cq[key].masterqueue\r\n\r\n                if (NGN.isFn(cq[key].eventName)) {\r\n                  cq[key].eventName(cq[key].payload)\r\n                } else {\r\n                  me.emit(cq[key].eventName, cq[key].payload)\r\n                }\r\n              }\r\n            }\r\n          }, 0)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method funnel\r\n       * Emit an event after a collection of unique events have all fired.\r\n       * This can be useful in situations where multiple asynchronous actions\r\n       * must complete before another begins. For example, blending 3\r\n       * remote data sources from different API's into a single resultset\r\n       * can be achieved with this.\r\n       *\r\n       * **Example**\r\n       * ```js\r\n       * let collection = NGN.BUS.funnel(['download1done', 'download2done', 'download3done'], 'make.results')\r\n       *\r\n       * let allData = []\r\n       *\r\n       * // When all of the downloads are done, log them.\r\n       * NGN.BUS.on('make.results', () => {\r\n       *   console.log(allData)\r\n       * })\r\n       *\r\n       * // Download the first set of data asynchronously\r\n       * NGN.NET.json('http:/download1.com/data.json', (data) => {\r\n       *   allData.push(data)\r\n       *   NGN.BUS.emit('download1done')\r\n       * })\r\n       *\r\n       * // Download the second set of data asynchronously\r\n       * NGN.NET.json('http:/download2.com/data.json', (data) => {\r\n       *   allData.push(data)\r\n       *   NGN.BUS.emit('download2done')\r\n       * })\r\n       *\r\n       * // Download the third set of data asynchronously\r\n       * NGN.NET.json('http:/download3.com/data.json', (data) => {\r\n       *   allData.push(data)\r\n       *   NGN.BUS.emit('download3done')\r\n       * })\r\n       *\r\n       * // The handler can be removed with the special method:\r\n       * collection.remove()\r\n       * ```\r\n       * @param {array} eventCollection\r\n       * An array of events. Once _all_ of these events have fired,\r\n       * the triggerEventName will be fired.\r\n       * @param {string|function} triggerEventName\r\n       * The name of the event triggered after the collection has completed.\r\n       * This can also be a callback function. If a callback function is provided,\r\n       * it will receive the payload as the only argument when it is triggered.\r\n       * @param {any} [payload]\r\n       * An optional payload delivered to the #triggerEventName.\r\n       * @returns {object} collection\r\n       * Provides the key/value configuration of the collection.\r\n       * ```js\r\n       * {\r\n       *   masterqueue: ['event1', 'event2', 'etc'], // The original event array (non-editable)\r\n       *   remainingqueue: [...], // The events the BUS is still waiting for before firing the trigger event.\r\n       *   eventName: 'triggeredEventName', // Name of the event triggered after the remaining elements are flushed.\r\n       *   payload: 'anything', // OPTIONAL\r\n       *   remove: [Function]\r\n       * }\r\n       * ```\r\n       */\r\n      funnel: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        if (NGN.typeof(eventCollection) !== 'array') {\r\n          throw new Error(`NGN.BUS.funnel expected an array of events, but received a(n) ${NGN.typeof(eventCollection)}`)\r\n        }\r\n\r\n        let collection = new Set(eventCollection)\r\n        let key = this.getInternalCollectionId(this.META.collectionQueue)\r\n\r\n        this.META.collectionQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.collectionQueue[key], {\r\n          masterqueue: NGN.const(new Set(eventCollection)),\r\n          remainingqueue: NGN.private(collection),\r\n          eventName: NGN.const(triggerEventName),\r\n          remove: NGN.const(() => {\r\n            this.META.collectionQueue[key].masterqueue.forEach(event => {\r\n              this.off(event, this.handleCollectionTrigger(event, key))\r\n            })\r\n\r\n            this.decreaseMaxListeners(this.META.collectionQueue[key].masterqueue.size)\r\n\r\n            delete this.META.collectionQueue[key]\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners(collection.size)\r\n\r\n        collection.forEach(event => {\r\n          this.on(event, this.handleCollectionTrigger(event, key))\r\n        })\r\n\r\n        return this.META.collectionQueue[key]\r\n      }),\r\n\r\n      /**\r\n       * @method funnelOnce\r\n       * This provides the same functionality as #funnel, but\r\n       * removes the listener after the resultant event has fired.\r\n       * See #funnel for detailed usage.\r\n       * @param {array} eventCollection\r\n       * An array of events. Once _all_ of these events have fired,\r\n       * the triggerEventName will be fired.\r\n       * @param {string} triggerEventName\r\n       * The name of the event triggered after the collection has completed.\r\n       * @param {any} [payload]\r\n       * An optional payload delivered to the #triggerEventName.\r\n       * @returns {object} collection\r\n       * Provides the key/value configuration of the collection.\r\n       */\r\n      funnelOnce: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        let funnelClosureEvent = `::NGNFUNNEL::${(new Date()).getTime()}::${triggerEventName}`\r\n        // let funnelClosureEvent = Symbol(triggerEventName)\r\n        let collection = this.funnel(eventCollection, funnelClosureEvent, payload)\r\n\r\n        this.increaseMaxListeners()\r\n        this.once(funnelClosureEvent, () => {\r\n          collection.remove()\r\n          collection = null\r\n          this.emit(triggerEventName, payload)\r\n        })\r\n      }),\r\n\r\n      /**\r\n       * @method threshold\r\n       * After an event is fired a predetermined number of times (the threshold),\r\n       * trigger another event or function.\r\n       *\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * NGN.BUS.threshold('push.my.button', 3, 'annoyed')\r\n       *\r\n       * NGN.BUS.on('annoyed', function () {\r\n       *   console.log('We apologize for the slow response, but excessive clicking will not speed up the process.')\r\n       * })\r\n       *\r\n       * document.getElementById('#myButton').addEventListener('click', NGN.BUS.attach('push.my.button'))\r\n       * ```\r\n       *\r\n       * Once the threshold is exceeded, the final event will be triggered and\r\n       * the threshold will be reset. Using the example above, this means\r\n       * clicking 3 times on `#myButton` would trigger the `annoyed` event ONCE,\r\n       * 6 times triggers `annoyed` TWICE, 9 times triggers `annoyed` THREE times, etc.\r\n       * @param {string} thresholdEventName\r\n       * The name of the event to count.\r\n       * @param {number} limit\r\n       * The number of occurrances allowed until the final event is triggered.\r\n       * The event will be triggered at the threshold. For example, if the limit\r\n       * is `3`, the finalEvent will be triggered the 3rd time thresholdEventName is\r\n       * fired.\r\n       * @param {string|function} finalEventName\r\n       * This can be an event or callback function triggered when the threshold is crossed.\r\n       * If a callback function is specified, the payload is passed as the only argument.\r\n       * @param {any} [payload]\r\n       * An optional payload to send to the finalEvent handler(s).\r\n       * @returns {object}\r\n       * Returns an object that can be used to remove the threshold.\r\n       *\r\n       */\r\n      threshold: NGN.const(function (thresholdEventName, limit, finalEventName, payload = null) {\r\n        if (typeof thresholdEventName !== 'string') {\r\n          throw new Error('The threshold event name must be a string (received ' + (typeof thresholdEventName) + ')')\r\n        }\r\n\r\n        // let key = `${this.getInternalCollectionId(this.META.thresholdQueue)}${limit.toString()}`\r\n        let key = this.getInternalCollectionId(this.META.thresholdQueue)\r\n\r\n        this.META.thresholdQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.thresholdQueue[key], {\r\n          key: NGN.const(key),\r\n          eventName: NGN.const(thresholdEventName),\r\n          limit: NGN.const(limit),\r\n          count: NGN.private(0),\r\n          finalEventName: NGN.const(finalEventName),\r\n          remove: NGN.const(() => {\r\n            let event = this.META.thresholdQueue[key].eventName\r\n\r\n            delete this.META.thresholdQueue[key]\r\n\r\n            this.decreaseMaxListeners()\r\n            this.off(event, this.handleThresholdTrigger(key))\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(thresholdEventName, this.handleThresholdTrigger(key))\r\n\r\n        return this.META.thresholdQueue[key]\r\n      }),\r\n\r\n      thresholdOnce: NGN.const(function (thresholdEventName, limit, finalEventName, payload = null) {\r\n        let thresholdClosureEvent = `::NGNTHRESHOLD::${(new Date()).getTime()}::${finalEventName}`\r\n        let threshold = this.threshold(thresholdEventName, limit, thresholdClosureEvent, payload)\r\n\r\n        this.once(thresholdClosureEvent, () => {\r\n          threshold.remove()\r\n          threshold = null\r\n          this.emit(finalEventName, payload)\r\n        })\r\n      }),\r\n\r\n      /**\r\n       * @method handleThresholdTrigger\r\n       * A method to manage #threshold event handlers.\r\n       * @private\r\n       */\r\n      handleThresholdTrigger: NGN.const(function (key) {\r\n        let me = this\r\n        return function () {\r\n          // Use setTimeout to simulate nextTick\r\n          setTimeout(() => {\r\n            if (me.META.thresholdQueue.hasOwnProperty(key)) {\r\n              me.META.thresholdQueue[key].count++\r\n              if (me.META.thresholdQueue[key].count === me.META.thresholdQueue[key].limit) {\r\n                if (NGN.isFn(me.META.thresholdQueue[key].finalEventName)) {\r\n                  me.META.thresholdQueue[key].finalEventName(me.META.thresholdQueue[key].payload)\r\n                } else {\r\n                  me.emit(me.META.thresholdQueue[key].finalEventName, me.META.thresholdQueue[key].payload)\r\n                }\r\n\r\n                // This if statement is required in case the event is removed\r\n                // during the reset process.\r\n                if (me.META.thresholdQueue.hasOwnProperty(key)) {\r\n                  me.META.thresholdQueue[key].count = 0\r\n                }\r\n              }\r\n            }\r\n          }, 0)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * An internal method to wrap node-based event handlers\r\n       * with the proper scope.\r\n       * @param {string} eventName\r\n       * The name of the event being handled.\r\n       * @param {function} handlerFn\r\n       * The handler function.\r\n       */\r\n      wrapEventHandlerWithScope: NGN.privateconst((name, fn) => {\r\n        if (!NGN.nodelike) {\r\n          return fn\r\n        }\r\n\r\n        const handlerFn = fn\r\n\r\n        return function () {\r\n          let args = arguments\r\n\r\n          if (typeof args[args.length - 1] === 'symbol') {\r\n            name = args[args.length - 1].toString().replace(/Symbol\\(|\\)/gi, '')\r\n            args = NGN.slice(args)\r\n            args.pop()\r\n          }\r\n\r\n          handlerFn.apply({ event: name }, args)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * An internal method to apply scope based on whether the handler\r\n       * is a Node-like \"once\" emitter or not.\r\n       * @param {string} eventName\r\n       * The name of the event being scoped.\r\n       * @param {function} handlerFn\r\n       * The handler function.\r\n       */\r\n      applyScope: NGN.privateconst((args) => {\r\n        if (NGN.nodelike && args.length > 1) {\r\n          if (args[args.length - 1].listener) {\r\n            args[args.length - 1].listener = this.wrapEventHandlerWithScope(\r\n              args[0],\r\n              args[args.length - 1].listener\r\n            )\r\n          } else {\r\n            args[args.length - 1] = this.wrapEventHandlerWithScope(\r\n              args[0],\r\n              args[args.length - 1]\r\n            )\r\n          }\r\n        }\r\n      })\r\n    })\r\n  }\r\n\r\n  /**\r\n   * Remove all event handlers from the EventEmitter (both regular and adhoc).\r\n   * This is a shortcut for #removeAllListeners.\r\n   */\r\n  clear () {\r\n    let events = NGN.slice(arguments)\r\n\r\n    if (events.length === 0) {\r\n      this.META.wildcardEvents.clear()\r\n\r\n      let symbolEvents = []\r\n\r\n      if (NGN.nodelike) {\r\n        symbolEvents = Object.getOwnPropertySymbols(this._events)\r\n      } else {\r\n        symbolEvents = Object.getOwnPropertySymbols(this.adhoc)\r\n        symbolEvents = symbolEvents.concat(Object.getOwnPropertySymbols(this.handlers))\r\n      }\r\n\r\n      for (let i = 0; i < symbolEvents.length; i++) {\r\n        this.removeAllListeners(symbolEvents[i])\r\n      }\r\n\r\n      return this.removeAllListeners()\r\n    }\r\n\r\n    for (let i = 0; i < events.length; i++) {\r\n      this.META.wildcardEvents.delete(events[i])\r\n      this.removeAllListeners(events[i])\r\n    }\r\n  }\r\n\r\n  /**\r\n   * Internal method used to handle TTL and wildcard management.\r\n   * @private\r\n   */\r\n  eventHandler (eventName, callback, ttl, prepend = false) {\r\n    if (NGN.typeof(ttl) === 'boolean') {\r\n      prepend = ttl\r\n      ttl = this.META.defaultTTL\r\n    }\r\n\r\n    if (ttl === undefined) {\r\n      ttl = this.META.defaultTTL\r\n    }\r\n\r\n    if (ttl > 0) {\r\n      setTimeout(() => this.off(eventName, callback), ttl)\r\n    }\r\n\r\n    if (typeof eventName === 'string' && eventName.indexOf('*') >= 0) {\r\n      this.META.wildcardEvents.add(eventName)\r\n    }\r\n\r\n    return prepend\r\n  }\r\n\r\n  /**\r\n   * @method on\r\n   * Create a new event handler for the specified event.\r\n   * @param {string|string[]|object} eventName\r\n   * Name of the event to listen for.\r\n   * If an object is passed, this method will automatically setup a #pool.\r\n   * @param {function} handler\r\n   * The method responsible for responding to the event.\r\n   * This is ignored if eventName is an object.\r\n   * @param {number} [TTL]\r\n   * Time-To-Live is the number of milliseconds before the event handler\r\n   * is automatically removed. This is useful for automatically cleaning\r\n   * up limited-life event handlers.\r\n   * @param {boolean} [prepend=false]\r\n   * When set to `true`, the event is added to the beginning of\r\n   * the processing list instead of the end.\r\n   * This is ignored if eventName is an object.\r\n   */\r\n  on (eventName, callback, ttl, prepend = false) {\r\n    if (NGN.typeof(eventName) === 'array') {\r\n      for (let i = 0; i < eventName.length; i++) {\r\n        this.on(eventName[i], callback, ttl, prepend)\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    if (this.eventHandler(...arguments)) {\r\n      this.prependListener(eventName, callback)\r\n    } else {\r\n      this.addListener(eventName, callback)\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method once\r\n   * Create a new event handler for the specified event. The\r\n   * handler will be removed immediately after it is executed. This\r\n   * effectively listens for an event to happen once and only once\r\n   * before the handler is destroyed.\r\n   * @param  {string} eventName\r\n   * Name of the event to listen for.\r\n   * @param  {Function} handler\r\n   * The method responsible for responding to the event.\r\n   * @param {boolean} [prepend=false]\r\n   * When set to `true`, the event is added to the beginning of\r\n   * the processing list instead of the end.\r\n   */\r\n  once (eventName, callback, ttl, prepend = false) {\r\n    if (NGN.typeof(eventName) === 'array') {\r\n      for (let i = 0; i < eventName.length; i++) {\r\n        this.once(eventName[i], callback, ttl, prepend)\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    if (this.eventHandler(...arguments)) {\r\n      this.prependOnceListener(eventName, callback)\r\n    } else {\r\n      super.once(eventName, this.wrapEventHandlerWithScope(eventName, callback))\r\n    }\r\n  }\r\n\r\n  // The following methods override the Node event emitter only when necessary.\r\n  prependListener () {\r\n    this.applyScope(arguments)\r\n    super.prependListener(...arguments)\r\n  }\r\n\r\n  prependOnceListener () {\r\n    this.applyScope(arguments)\r\n    super.prependOnceListener(...arguments)\r\n  }\r\n\r\n  addListener () {\r\n    this.applyScope(arguments)\r\n    super.addListener(...arguments)\r\n  }\r\n\r\n  removeListener () {\r\n    if (arguments[arguments.length - 1] !== true) {\r\n      this.applyScope(arguments)\r\n    }\r\n\r\n    super.removeListener(...arguments)\r\n  }\r\n\r\n  /**\r\n   * @method emit\r\n   * Emits an event.\r\n   * @param {string[]} eventName\r\n   * The event name can be a string or an array of strings. If an array\r\n   * of strings is specified, an event will be fired for each event name\r\n   * within the array.\r\n   * @param {any} [payload]\r\n   * An optional payload. This can be any number of additional arguments.\r\n   */\r\n  emit () {\r\n    if (NGN.typeof(arguments[0]) === 'array') {\r\n      let args = NGN.slice(arguments)\r\n      let eventNames = args.shift()\r\n\r\n      for (let i = 0; i < eventNames.length; i++) {\r\n        this.emit(eventNames[i], ...args)\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    // This catches non-string event names. NGN internally uses Symbols\r\n    // for the NGN.WARN/INFO/ERROR event names to prevent name collisions.\r\n    // This check provides support for these special events. These types\r\n    // of events will never have wildcards.\r\n    if (!NGN.nodelike || !arguments[0] || this.META.wildcardEvents.size === 0) {\r\n      super.emit(...arguments)\r\n      return\r\n    }\r\n\r\n    if (NGN.nodelike && typeof arguments[0] === 'symbol') {\r\n      super.emit(...arguments)\r\n      return\r\n    }\r\n\r\n    /**\r\n     * The NGN browser-based event emitter supports wildcards natively, but\r\n     * Node.js does not. This adds simple wildcard support for Node. The\r\n     * only wildcard character supported at this time is `*`. This feature\r\n     * will check the event name for the existance of a wildcard. If a\r\n     * wilcard character is present, the internally-maintained list of\r\n     * wildcard events is checked to see if it's a known event. If none\r\n     * of these checks pass, the standard event emitter is used, otherwise\r\n     * special wildcard handling is used.\r\n     */\r\n    let iterator = this.META.wildcardEvents.values()\r\n    let currentEvent = null\r\n    let args = NGN.slice(arguments)\r\n\r\n    args.shift()\r\n\r\n    while (currentEvent === null || !currentEvent.done) {\r\n      if (currentEvent !== null && currentEvent.value !== arguments[0]) {\r\n        let pattern = new RegExp(currentEvent.value.replace(/\\./g, '\\\\.').replace(/\\*/g, '.*'), 'g')\r\n\r\n        if (pattern.test(arguments[0])) {\r\n          super.emit(currentEvent.value, ...args, typeof arguments[0] !== 'symbol' ? Symbol(arguments[0]) : arguments[0])\r\n          break\r\n        }\r\n      }\r\n\r\n      currentEvent = iterator.next()\r\n    }\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 24,
+    "column": 15
+  },
+  "end": {
+    "line": 1019,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "emitter/core.js",
+  "extends": "EEmitter",
+  "configuration": {},
+  "properties": {
+    "META": {
+      "type": "property",
+      "label": "META",
+      "description": null,
+      "code": "META: NGN.private({\r\n        queued: {},\r\n        collectionQueue: {},\r\n        thresholdQueue: {},\r\n        defaultTTL: -1,\r\n        wildcardEvents: new Set()\r\n      })",
+      "start": {
+        "line": 33,
+        "column": 6
+      },
+      "end": {
+        "line": 39,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "setTTL": {
+      "type": "property",
+      "label": "setTTL",
+      "description": "Set a default time-to-live for event handlers (in milliseconds).\r\n      After the TTL period elapses, event handlers are removed.\r\n      By default, there is no TTL (`-1`).\r\n      \r\n      The number of milliseconds before an event handler is automatically\r\n      removed. This value may be `-1` (no TTL/never expires) or a value\r\n      greater than `0`.",
+      "code": "setTTL: NGN.const((ttl = -1) => {\r\n        if (ttl === 0) {\r\n          NGN.WARN('NGN.EventEmitter#TTL cannot be 0.')\r\n          return\r\n        }\r\n\r\n        this.META.defaultTTL = ttl\r\n      })",
+      "start": {
+        "line": 51,
+        "column": 6
+      },
+      "end": {
+        "line": 58,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "off": {
+      "type": "property",
+      "label": "off",
+      "description": "Remove an event handler. If no handler is specified, all handlers for\r\n      the specified event will be removed.\r\n      This is a shortcut for #removeListener.\r\n      \r\n      Name of the event to remove.\r\n      \r\n      The handler function to remove from the event handlers.",
+      "code": "off: NGN.public((eventName, handlerFn) => {\r\n        if (NGN.typeof(eventName) === 'array') {\r\n          for (let i = 0; i < eventName.length; i++) {\r\n            this.off(eventName[i], handlerFn)\r\n          }\r\n\r\n          return\r\n        }\r\n\r\n        let l = this.listeners(eventName)\r\n\r\n        if (!NGN.isFn(handlerFn)) {\r\n          return this.clear(eventName)\r\n        }\r\n\r\n        let wrappedHandlerFn = this.wrapEventHandlerWithScope(eventName, handlerFn)\r\n\r\n        if (l.indexOf(wrappedHandlerFn) < 0) {\r\n          for (let i = 0; i < l.length; i++) {\r\n            if (l[i].toString() === wrappedHandlerFn.toString()) {\r\n              this.META.wildcardEvents.delete(eventName)\r\n              // this.removeListener(eventName, handlerFn)\r\n              this.removeListener(eventName, l[i], false)\r\n              break\r\n            }\r\n          }\r\n        } else {\r\n          this.META.wildcardEvents.delete(eventName)\r\n          this.removeListener(eventName, handlerFn)\r\n        }\r\n      })",
+      "start": {
+        "line": 70,
+        "column": 6
+      },
+      "end": {
+        "line": 100,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "deprecate": {
+      "type": "property",
+      "label": "deprecate",
+      "description": "Provides a deprecation notice for the specified event.\r\n      Automatically emits the appropriate \"replacement\" event\r\n      if a replacement event is configured. If no replacement\r\n      event is configured, the deprecation notice will be written\r\n      to the console but no replacement event will be triggered.\r\n      \r\n      The name of the deprecated event.\r\n      \r\n      The name of the new event.",
+      "code": "deprecate: NGN.const((deprecatedEventName, replacementEventName) => {\r\n        const me = this\r\n\r\n        this.on(deprecatedEventName, function () {\r\n          NGN.WARN(`${deprecatedEventName} is deprecated. ` + (!replacementEventName ? '' : `Use ${replacementEventName} instead.`))\r\n\r\n          if (replacementEventName) {\r\n            let args = NGN.slice(arguments)\r\n\r\n            args.shift()\r\n            args.unshift(replacementEventName)\r\n\r\n            me.emit.apply(me, args)\r\n          }\r\n        })\r\n      })",
+      "start": {
+        "line": 114,
+        "column": 6
+      },
+      "end": {
+        "line": 129,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "subscriberObject": {
+      "type": "property",
+      "label": "subscriberObject",
+      "description": "A key:value object where the key is the name of the\nunprefixed event and the key is the handler function.\nA value can be an object, allowing for nesting events. For example:\n\n```js\nNGN.BUS.pool('prefix.', {\ndeep: {\nnested: {\neventName: function  {\nconsole.log('event triggered')\n}\n}\n}\n})\n\nNGN.BUS.emit('prefix.deep.nested.eventName') // <-- Outputs \"event triggered\"\n```",
+      "code": "pool: NGN.privateconst(function (prefix, group) {\r\n        if (typeof prefix !== 'string') {\r\n          group = prefix\r\n          prefix = ''\r\n        }\r\n\r\n        let pool = {}\r\n\r\n        for (let eventName in group) {\r\n          let topic = `${NGN.coalesce(prefix, '')}${eventName}`\r\n\r\n          if (NGN.isFn(group[eventName])) {\r\n            this.increaseMaxListeners()\r\n\r\n            pool[eventName] = this.on(topic, group[eventName])\r\n          } else if (typeof group[eventName] === 'object') {\r\n            this.pool(`${topic}.`, group[eventName])\r\n          } else {\r\n            NGN.WARN(`${topic} could not be pooled in the event emitter because it's value is not a function.`)\r\n          }\r\n        }\r\n      })",
+      "start": {
+        "line": 158,
+        "column": 6
+      },
+      "end": {
+        "line": 179,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "object",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "attach": {
+      "type": "property",
+      "label": "attach",
+      "description": "Attach a function to a topic. This can be used\r\n      to forward events in response to asynchronous functions.\r\n      \n      For example:\r\n      \n      ```js\r\n      myAsyncDataFetch(NGN.BUS.attach('topicName'))\r\n      ```\r\n      \n      This is the same as:\r\n      \n      ```js\r\n      myAsyncCall(function(data){\r\n       NGN.BUS.emit('topicName', data)\r\n      })\r\n      ```\r\n      \r\n      The name of the event to attach a handler method to.\r\n      \r\n      Setting this to `true` will execute a `event.preventDefault()` before\r\n      attaching the handler.\r\n      \r\n      Returns a function that will automatically be associated with an event.",
+      "code": "attach: NGN.const(function (eventName, preventDefaultAction) {\r\n        preventDefaultAction = NGN.coalesce(preventDefaultAction, false)\r\n\r\n        return (e) => {\r\n          if (preventDefaultAction && !NGN.nodelike) {\r\n            e.preventDefault()\r\n          }\r\n\r\n          this.emit(eventName, ...arguments)\r\n        }\r\n      })",
+      "start": {
+        "line": 207,
+        "column": 6
+      },
+      "end": {
+        "line": 217,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "increaseMaxListeners": {
+      "type": "property",
+      "label": "increaseMaxListeners",
+      "description": "Increase the number of maximum listeners.\r\n      \r\n      The number of events the max listener account will be increased by.",
+      "code": "increaseMaxListeners: NGN.private((count = 1) => {\r\n        this.setMaxListeners(this.getMaxListeners() + count)\r\n      })",
+      "start": {
+        "line": 226,
+        "column": 6
+      },
+      "end": {
+        "line": 228,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "decreaseMaxListeners": {
+      "type": "property",
+      "label": "decreaseMaxListeners",
+      "description": "Decrease the number of maximum listeners.\r\n      \r\n      The number of events the max listener account will be decreased by.",
+      "code": "decreaseMaxListeners: NGN.private((count = 1) => {\r\n        this.setMaxListeners(this.getMaxListeners() - count)\r\n      })",
+      "start": {
+        "line": 237,
+        "column": 6
+      },
+      "end": {
+        "line": 239,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "forward": {
+      "type": "property",
+      "label": "forward",
+      "description": "A special subscriber that fires one or more event in response to\r\n      to an event. This is used to bubble events up/down an event chain.\r\n      \n      For example:\r\n      \n      ```js\r\n      NGN.BUS.forward('sourceEvent', ['someEvent','anotherEvent'], {payload:true})\r\n      ```\r\n      When `sourceEvent` is published, the bind method triggers `someEvent` and\r\n      `anotherEvent`, passing the payload object to `someEvent` and\r\n      `anotherEvent` subscribers simultaneously.\r\n      \n      To forward an event to another EventEmitter, see #relay.\r\n      \r\n      The event to subscribe to.\r\n      \r\n      An event or array of events to fire in response to the sourceEvent.\r\n      \r\n      Optional data to pass to each bound event handler.\r\n      \r\n      Returns an object with a single `remove()` method.",
+      "code": "forward: NGN.const(function (eventName, triggers, payload) {\r\n        triggers = NGN.forceArray(triggers)\r\n\r\n        let me = this\r\n        let listener = function () {\r\n          let args = NGN.slice(arguments)\r\n\r\n          if (payload) {\r\n            args.push(payload)\r\n          }\r\n\r\n          me.emit(triggers, ...args)\r\n        }\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(eventName, listener)\r\n\r\n        // Provide handle back for removal of topic\r\n        return {\r\n          remove: () => {\r\n            this.decreaseMaxListeners()\r\n            this.off(eventName, listener)\r\n          }\r\n        }\r\n      })",
+      "start": {
+        "line": 265,
+        "column": 6
+      },
+      "end": {
+        "line": 289,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "relay": {
+      "type": "property",
+      "label": "relay",
+      "description": "This relays an entire event to a different event emitter.\r\n      For example:\r\n      \n      ```js\r\n      let emitterA = new NGN.EventEmitter()\r\n      let emitterB = new NGN.EventEmitter()\r\n      \n      emitterA.relay('my.event', emitterB)\r\n      \n      emitterB.on('my.event', () => { console.log('Emitter B heard the event!') })\r\n      \n      emitterA.emit('my.event') // Outputs \"Emitter B heard the event!\"\r\n      ```\r\n      \r\n      The name of the event to listen for.\r\n      \r\n      The emitter to relay the event to.\r\n      \r\n      An optional prefix to prepend to the eventName.\r\n      \r\n      An optional postfix to append to the eventName.",
+      "code": "relay: NGN.const(function (eventName, targetEmitter, prefix = null, postfix = null) {\r\n        let eventNameList = NGN.forceArray(eventName)\r\n\r\n        for (let i = 0; i < eventNameList.length; i++) {\r\n          let eventName = eventNameList[i]\r\n\r\n          this.on(eventName, function () {\r\n            if (NGN.typeof(this.event) === 'symbol') {\r\n              if (prefix !== null || postfix !== null) {\r\n                NGN.INFO('Cannot relay a symbol-based event with a prefix/postfix.')\r\n              }\r\n\r\n              targetEmitter.emit(...arguments)\r\n            } else {\r\n              targetEmitter.emit(`${NGN.coalesce(prefix, '')}${this.event}${NGN.coalesce(postfix, '')}`, ...arguments)\r\n            }\r\n          })\r\n        }\r\n      })",
+      "start": {
+        "line": 314,
+        "column": 6
+      },
+      "end": {
+        "line": 332,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "relayOnce": {
+      "type": "property",
+      "label": "relayOnce",
+      "description": "This relays an entire event to a different event emitter. This is\r\n      the same as #relay, but the event handler is removed after the\r\n      first invocation of the event.\r\n      \n      For example:\r\n      \n      ```js\r\n      let emitterA = new NGN.EventEmitter()\r\n      let emitterB = new NGN.EventEmitter()\r\n      \n      emitterA.relayOnce('my.event', emitterB)\r\n      \n      emitterB.on('my.event', () => { console.log('Emitter B heard the event!') })\r\n      \n      emitterA.emit('my.event') // Outputs \"Emitter B heard the event!\"\r\n      emitterA.emit('my.event') // Does nothing\r\n      ```\r\n      \r\n      The name of the event to listen for.\r\n      \r\n      The emitter to relay the event to.\r\n      \r\n      An optional prefix to prepend to the eventName.\r\n      \r\n      An optional postfix to append to the eventName.",
+      "code": "relayOnce: NGN.const(function (eventName, targetEmitter, prefix = null, postfix = null) {\r\n        let eventNameList = NGN.forceArray(eventName)\r\n\r\n        for (let i = 0; i < eventNameList.length; i++) {\r\n          let eventName = eventNameList[i]\r\n\r\n          this.once(eventName, function () {\r\n            if (NGN.typeof(this.event) === 'symbol') {\r\n              if (prefix !== null || postfix !== null) {\r\n                NGN.INFO('Cannot relay a symbol-based event with a prefix/postfix.')\r\n              }\r\n\r\n              targetEmitter.emit(...arguments)\r\n            } else {\r\n              targetEmitter.emit(`${NGN.coalesce(prefix, '')}${this.event}${NGN.coalesce(postfix, '')}`, ...arguments)\r\n            }\r\n          })\r\n        }\r\n      })",
+      "start": {
+        "line": 361,
+        "column": 6
+      },
+      "end": {
+        "line": 379,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "delayEmit": {
+      "type": "property",
+      "label": "delayEmit",
+      "description": "This method waits for the specified duration, then publishes an\r\n      event once. This will publish the event only once at the end of the\r\n      wait period, even if the event is triggered multiple times. This can\r\n      be useful when working with many events triggered in rapid succession.\r\n      \n      For example, an NGN.DATA.Model representing a person may be used to\r\n      track a user profile. The NGN.DATA.Model fires an event called `field.update`\r\n      every time a data field is modified. In many cases, a user may update\r\n      multiple fields of their profile using a form with a \"Save\" button.\r\n      Instead of generating a new \"save\" (to disk, to memory, to an API, etc)\r\n      operation for each field, the publishOnce event can wait until all\r\n      changes are made before running the save operation.\r\n      \n      ```js\r\n      // Create a data model representing a person.\r\n      var Person = new NGN.DATA.Model({....})\r\n      \n      // Create a new person record for a user.\r\n      var user = new Person()\r\n      \n      // When the user is modified, save the data.\r\n      user.on('field.update', function () {\r\n        // Wait 300 milliseconds to trigger the save event\r\n        NGN.BUS.delayEmit('user.save', 300)\r\n      })\r\n      \n      // Save the user using an API\r\n      NGN.BUS.on('user.save', function () {\r\n        NGN.NET.put({\r\n          url: 'https://my.api.com/user',\r\n          json: user.data\r\n        })\r\n      })\r\n      \n      // Modify the record attributes (which are blank by default)\r\n      user.firstname = 'John'\r\n      user.lastname = 'Doe'\r\n      user.age = 42\r\n      \n      // Make another update 1 second later\r\n      setTimeout(function () {\r\n        user.age = 32\r\n      }, 1000)\r\n      ```\r\n      \n      The code above sets up a model and record. Then it listens to the record\r\n      for field updates. Each time it recognizes an update, it queues the \"save\"\r\n      event. When the queue matures, it fires the `user.save` event.\r\n      \n      The first `field.update` is triggered when `user.firstname = 'John'` runs.\r\n      This initiates a queue for `user.save`, set to mature in 300 millisenconds.\r\n      Next, a `field.update` is triggered when `user.lastname = 'Doe'` runs.\r\n      This time, since the queue for `user.save` is already initiated, notthing\r\n      new happens. Finally, a `field.update` is triggered when `user.age = 42`\r\n      runs. Just like the last one, nothing happens since the `user.save` queue\r\n      is already active.\r\n      \n      The `user.save` queue \"matures\" after 300 milliseconds. This means after\r\n      300 milliseconds have elapsed, the `user.save` event is triggered. In this\r\n      example, it means the `NGN.NET.put()` code will be executed. As a result,\r\n      all 3 change (firstname, lastname, and age) will be complete before the\r\n      API request is executed. The queue is cleared immediately.\r\n      \n      The final update occurs 1 second later (700 milliseconds after the queue\r\n      matures). This triggers a `field.update`, but since the queue is no\r\n      longer active, it is re-initiated. 300 milliseconds later, the `user.save`\r\n      event is fired again, thus executing the API request again (1.3 seconds\r\n      in total).\r\n      \r\n      The event/topic to publish/emit.\r\n      \r\n      The number of milliseconds to wait before firing the event.\r\n      \r\n      An optional payload, such as data to be passed to an event handler.",
+      "code": "delayEmit: NGN.const(function (eventName, delay) {\r\n        if (!this.META.queued.hasOwnProperty(eventName)) {\r\n          let args = NGN.slice(arguments)\r\n          args.splice(1, 1)\r\n\r\n          this.META.queued[eventName] = setTimeout(() => {\r\n            delete this.META.queued[eventName]\r\n            this.emit(...args)\r\n          }, delay)\r\n        }\r\n      })",
+      "start": {
+        "line": 458,
+        "column": 6
+      },
+      "end": {
+        "line": 468,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "getInternalCollectionId": {
+      "type": "property",
+      "label": "getInternalCollectionId",
+      "description": "Returns a unique ID for special collections.\r\n      \r\n      The collection to generate an ID for.",
+      "code": "getInternalCollectionId: NGN.privateconst(function (collection) {\r\n        return Symbol(collection)\r\n        // let time = (new Date()).getTime().toString()\r\n        // let rand = Math.random().toString()\r\n        // let key = Object.keys(collection).length + 1\r\n        //\r\n        // while (collection.hasOwnProperty(`${key.toString()}${time}${rand}`)) {\r\n        //   key++\r\n        // }\r\n        //\r\n        // return `${key.toString()}${time}${rand}`\r\n      })",
+      "start": {
+        "line": 477,
+        "column": 6
+      },
+      "end": {
+        "line": 488,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "handleCollectionTrigger": {
+      "type": "property",
+      "label": "handleCollectionTrigger",
+      "description": "A method to manage #chain event handlers.",
+      "code": "handleCollectionTrigger: NGN.privateconst(function (eventName, key) {\r\n        let me = this\r\n\r\n        return function () {\r\n          // Use setTimeout to simulate nextTick\r\n          setTimeout(() => {\r\n            let cq = me.META.collectionQueue\r\n\r\n            if (cq[key]) {\r\n              cq[key].remainingqueue.delete(eventName)\r\n\r\n              if (cq[key].remainingqueue.size === 0) {\r\n                cq[key].remainingqueue = cq[key].masterqueue\r\n\r\n                if (NGN.isFn(cq[key].eventName)) {\r\n                  cq[key].eventName(cq[key].payload)\r\n                } else {\r\n                  me.emit(cq[key].eventName, cq[key].payload)\r\n                }\r\n              }\r\n            }\r\n          }, 0)\r\n        }\r\n      })",
+      "start": {
+        "line": 495,
+        "column": 6
+      },
+      "end": {
+        "line": 518,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "funnel": {
+      "type": "property",
+      "label": "funnel",
+      "description": "Emit an event after a collection of unique events have all fired.\r\n      This can be useful in situations where multiple asynchronous actions\r\n      must complete before another begins. For example, blending 3\r\n      remote data sources from different API's into a single resultset\r\n      can be achieved with this.\r\n      \n      Example\n      ```js\r\n      let collection = NGN.BUS.funnel(['download1done', 'download2done', 'download3done'], 'make.results')\r\n      \n      let allData = []\r\n      \n      // When all of the downloads are done, log them.\r\n      NGN.BUS.on('make.results', () => {\r\n        console.log(allData)\r\n      })\r\n      \n      // Download the first set of data asynchronously\r\n      NGN.NET.json('http:/download1.com/data.json', (data) => {\r\n        allData.push(data)\r\n        NGN.BUS.emit('download1done')\r\n      })\r\n      \n      // Download the second set of data asynchronously\r\n      NGN.NET.json('http:/download2.com/data.json', (data) => {\r\n        allData.push(data)\r\n        NGN.BUS.emit('download2done')\r\n      })\r\n      \n      // Download the third set of data asynchronously\r\n      NGN.NET.json('http:/download3.com/data.json', (data) => {\r\n        allData.push(data)\r\n        NGN.BUS.emit('download3done')\r\n      })\r\n      \n      // The handler can be removed with the special method:\r\n      collection.remove()\r\n      ```\r\n      \r\n      An array of events. Once _all_ of these events have fired,\r\n      the triggerEventName will be fired.\r\n      \r\n      The name of the event triggered after the collection has completed.\r\n      This can also be a callback function. If a callback function is provided,\r\n      it will receive the payload as the only argument when it is triggered.\r\n      \r\n      An optional payload delivered to the #triggerEventName.\r\n      \r\n      Provides the key/value configuration of the collection.\r\n      ```js\r\n      {\r\n        masterqueue: ['event1', 'event2', 'etc'], // The original event array (non-editable)\r\n        remainingqueue: [...], // The events the BUS is still waiting for before firing the trigger event.\r\n        eventName: 'triggeredEventName', // Name of the event triggered after the remaining elements are flushed.\r\n        payload: 'anything', // OPTIONAL\r\n        remove: [Function]\r\n      }\r\n      ```",
+      "code": "funnel: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        if (NGN.typeof(eventCollection) !== 'array') {\r\n          throw new Error(`NGN.BUS.funnel expected an array of events, but received a(n) ${NGN.typeof(eventCollection)}`)\r\n        }\r\n\r\n        let collection = new Set(eventCollection)\r\n        let key = this.getInternalCollectionId(this.META.collectionQueue)\r\n\r\n        this.META.collectionQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.collectionQueue[key], {\r\n          masterqueue: NGN.const(new Set(eventCollection)),\r\n          remainingqueue: NGN.private(collection),\r\n          eventName: NGN.const(triggerEventName),\r\n          remove: NGN.const(() => {\r\n            this.META.collectionQueue[key].masterqueue.forEach(event => {\r\n              this.off(event, this.handleCollectionTrigger(event, key))\r\n            })\r\n\r\n            this.decreaseMaxListeners(this.META.collectionQueue[key].masterqueue.size)\r\n\r\n            delete this.META.collectionQueue[key]\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners(collection.size)\r\n\r\n        collection.forEach(event => {\r\n          this.on(event, this.handleCollectionTrigger(event, key))\r\n        })\r\n\r\n        return this.META.collectionQueue[key]\r\n      })",
+      "start": {
+        "line": 581,
+        "column": 6
+      },
+      "end": {
+        "line": 614,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "funnelOnce": {
+      "type": "property",
+      "label": "funnelOnce",
+      "description": "This provides the same functionality as #funnel, but\r\n      removes the listener after the resultant event has fired.\r\n      See #funnel for detailed usage.\r\n      \r\n      An array of events. Once _all_ of these events have fired,\r\n      the triggerEventName will be fired.\r\n      \r\n      The name of the event triggered after the collection has completed.\r\n      \r\n      An optional payload delivered to the #triggerEventName.\r\n      \r\n      Provides the key/value configuration of the collection.",
+      "code": "funnelOnce: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        let funnelClosureEvent = `::NGNFUNNEL::${(new Date()).getTime()}::${triggerEventName}`\r\n        // let funnelClosureEvent = Symbol(triggerEventName)\r\n        let collection = this.funnel(eventCollection, funnelClosureEvent, payload)\r\n\r\n        this.increaseMaxListeners()\r\n        this.once(funnelClosureEvent, () => {\r\n          collection.remove()\r\n          collection = null\r\n          this.emit(triggerEventName, payload)\r\n        })\r\n      })",
+      "start": {
+        "line": 631,
+        "column": 6
+      },
+      "end": {
+        "line": 642,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "threshold": {
+      "type": "property",
+      "label": "threshold",
+      "description": "After an event is fired a predetermined number of times (the threshold),\r\n      trigger another event or function.\r\n      \n      For example:\r\n      \n      ```js\r\n      NGN.BUS.threshold('push.my.button', 3, 'annoyed')\r\n      \n      NGN.BUS.on('annoyed', function () {\r\n        console.log('We apologize for the slow response, but excessive clicking will not speed up the process.')\r\n      })\r\n      \n      document.getElementById('#myButton').addEventListener('click', NGN.BUS.attach('push.my.button'))\r\n      ```\r\n      \n      Once the threshold is exceeded, the final event will be triggered and\r\n      the threshold will be reset. Using the example above, this means\r\n      clicking 3 times on `#myButton` would trigger the `annoyed` event ONCE,\r\n      6 times triggers `annoyed` TWICE, 9 times triggers `annoyed` THREE times, etc.\r\n      \r\n      The name of the event to count.\r\n      \r\n      The number of occurrances allowed until the final event is triggered.\r\n      The event will be triggered at the threshold. For example, if the limit\r\n      is `3`, the finalEvent will be triggered the 3rd time thresholdEventName is\r\n      fired.\r\n      \r\n      This can be an event or callback function triggered when the threshold is crossed.\r\n      If a callback function is specified, the payload is passed as the only argument.\r\n      \r\n      An optional payload to send to the finalEvent handler(s).\r\n      \r\n      Returns an object that can be used to remove the threshold.",
+      "code": "threshold: NGN.const(function (thresholdEventName, limit, finalEventName, payload = null) {\r\n        if (typeof thresholdEventName !== 'string') {\r\n          throw new Error('The threshold event name must be a string (received ' + (typeof thresholdEventName) + ')')\r\n        }\r\n\r\n        // let key = `${this.getInternalCollectionId(this.META.thresholdQueue)}${limit.toString()}`\r\n        let key = this.getInternalCollectionId(this.META.thresholdQueue)\r\n\r\n        this.META.thresholdQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.thresholdQueue[key], {\r\n          key: NGN.const(key),\r\n          eventName: NGN.const(thresholdEventName),\r\n          limit: NGN.const(limit),\r\n          count: NGN.private(0),\r\n          finalEventName: NGN.const(finalEventName),\r\n          remove: NGN.const(() => {\r\n            let event = this.META.thresholdQueue[key].eventName\r\n\r\n            delete this.META.thresholdQueue[key]\r\n\r\n            this.decreaseMaxListeners()\r\n            this.off(event, this.handleThresholdTrigger(key))\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(thresholdEventName, this.handleThresholdTrigger(key))\r\n\r\n        return this.META.thresholdQueue[key]\r\n      })",
+      "start": {
+        "line": 681,
+        "column": 6
+      },
+      "end": {
+        "line": 712,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "thresholdOnce": {
+      "type": "property",
+      "label": "thresholdOnce",
+      "description": null,
+      "code": "thresholdOnce: NGN.const(function (thresholdEventName, limit, finalEventName, payload = null) {\r\n        let thresholdClosureEvent = `::NGNTHRESHOLD::${(new Date()).getTime()}::${finalEventName}`\r\n        let threshold = this.threshold(thresholdEventName, limit, thresholdClosureEvent, payload)\r\n\r\n        this.once(thresholdClosureEvent, () => {\r\n          threshold.remove()\r\n          threshold = null\r\n          this.emit(finalEventName, payload)\r\n        })\r\n      })",
+      "start": {
+        "line": 714,
+        "column": 6
+      },
+      "end": {
+        "line": 723,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "handleThresholdTrigger": {
+      "type": "property",
+      "label": "handleThresholdTrigger",
+      "description": "A method to manage #threshold event handlers.",
+      "code": "handleThresholdTrigger: NGN.const(function (key) {\r\n        let me = this\r\n        return function () {\r\n          // Use setTimeout to simulate nextTick\r\n          setTimeout(() => {\r\n            if (me.META.thresholdQueue.hasOwnProperty(key)) {\r\n              me.META.thresholdQueue[key].count++\r\n              if (me.META.thresholdQueue[key].count === me.META.thresholdQueue[key].limit) {\r\n                if (NGN.isFn(me.META.thresholdQueue[key].finalEventName)) {\r\n                  me.META.thresholdQueue[key].finalEventName(me.META.thresholdQueue[key].payload)\r\n                } else {\r\n                  me.emit(me.META.thresholdQueue[key].finalEventName, me.META.thresholdQueue[key].payload)\r\n                }\r\n\r\n                // This if statement is required in case the event is removed\r\n                // during the reset process.\r\n                if (me.META.thresholdQueue.hasOwnProperty(key)) {\r\n                  me.META.thresholdQueue[key].count = 0\r\n                }\r\n              }\r\n            }\r\n          }, 0)\r\n        }\r\n      })",
+      "start": {
+        "line": 730,
+        "column": 6
+      },
+      "end": {
+        "line": 753,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "wrapEventHandlerWithScope": {
+      "type": "property",
+      "label": "wrapEventHandlerWithScope",
+      "description": "An internal method to wrap node-based event handlers\r\n      with the proper scope.\r\n      \r\n      The name of the event being handled.\r\n      \r\n      The handler function.",
+      "code": "wrapEventHandlerWithScope: NGN.privateconst((name, fn) => {\r\n        if (!NGN.nodelike) {\r\n          return fn\r\n        }\r\n\r\n        const handlerFn = fn\r\n\r\n        return function () {\r\n          let args = arguments\r\n\r\n          if (typeof args[args.length - 1] === 'symbol') {\r\n            name = args[args.length - 1].toString().replace(/Symbol\\(|\\)/gi, '')\r\n            args = NGN.slice(args)\r\n            args.pop()\r\n          }\r\n\r\n          handlerFn.apply({ event: name }, args)\r\n        }\r\n      })",
+      "start": {
+        "line": 763,
+        "column": 6
+      },
+      "end": {
+        "line": 781,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "applyScope": {
+      "type": "property",
+      "label": "applyScope",
+      "description": "An internal method to apply scope based on whether the handler\r\n      is a Node-like \"once\" emitter or not.\r\n      \r\n      The name of the event being scoped.\r\n      \r\n      The handler function.",
+      "code": "applyScope: NGN.privateconst((args) => {\r\n        if (NGN.nodelike && args.length > 1) {\r\n          if (args[args.length - 1].listener) {\r\n            args[args.length - 1].listener = this.wrapEventHandlerWithScope(\r\n              args[0],\r\n              args[args.length - 1].listener\r\n            )\r\n          } else {\r\n            args[args.length - 1] = this.wrapEventHandlerWithScope(\r\n              args[0],\r\n              args[args.length - 1]\r\n            )\r\n          }\r\n        }\r\n      })",
+      "start": {
+        "line": 791,
+        "column": 6
+      },
+      "end": {
+        "line": 805,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor () {\r\n    super()\r\n\r\n    // const INSTANCE = Symbol('instance')\r\n\r\n    Object.defineProperties(this, {\r\n      // META: NGN.get(() => this[INSTANCE]),\r\n\r\n      META: NGN.private({\r\n        queued: {},\r\n        collectionQueue: {},\r\n        thresholdQueue: {},\r\n        defaultTTL: -1,\r\n        wildcardEvents: new Set()\r\n      }),\r\n\r\n      /**\r\n       * @method setTTL\r\n       * Set a default time-to-live for event handlers (in milliseconds).\r\n       * After the TTL period elapses, event handlers are removed.\r\n       * By default, there is no TTL (`-1`).\r\n       * @param {number} ttl\r\n       * The number of milliseconds before an event handler is automatically\r\n       * removed. This value may be `-1` (no TTL/never expires) or a value\r\n       * greater than `0`.\r\n       */\r\n      setTTL: NGN.const((ttl = -1) => {\r\n        if (ttl === 0) {\r\n          NGN.WARN('NGN.EventEmitter#TTL cannot be 0.')\r\n          return\r\n        }\r\n\r\n        this.META.defaultTTL = ttl\r\n      }),\r\n\r\n      /**\r\n       * @alias off\r\n       * Remove an event handler. If no handler is specified, all handlers for\r\n       * the specified event will be removed.\r\n       * This is a shortcut for #removeListener.\r\n       * @param {string} eventName\r\n       * Name of the event to remove.\r\n       * @param {function} [handlerFn]\r\n       * The handler function to remove from the event handlers.\r\n       */\r\n      off: NGN.public((eventName, handlerFn) => {\r\n        if (NGN.typeof(eventName) === 'array') {\r\n          for (let i = 0; i < eventName.length; i++) {\r\n            this.off(eventName[i], handlerFn)\r\n          }\r\n\r\n          return\r\n        }\r\n\r\n        let l = this.listeners(eventName)\r\n\r\n        if (!NGN.isFn(handlerFn)) {\r\n          return this.clear(eventName)\r\n        }\r\n\r\n        let wrappedHandlerFn = this.wrapEventHandlerWithScope(eventName, handlerFn)\r\n\r\n        if (l.indexOf(wrappedHandlerFn) < 0) {\r\n          for (let i = 0; i < l.length; i++) {\r\n            if (l[i].toString() === wrappedHandlerFn.toString()) {\r\n              this.META.wildcardEvents.delete(eventName)\r\n              // this.removeListener(eventName, handlerFn)\r\n              this.removeListener(eventName, l[i], false)\r\n              break\r\n            }\r\n          }\r\n        } else {\r\n          this.META.wildcardEvents.delete(eventName)\r\n          this.removeListener(eventName, handlerFn)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method deprecate\r\n       * Provides a deprecation notice for the specified event.\r\n       * Automatically emits the appropriate \"replacement\" event\r\n       * if a replacement event is configured. If no replacement\r\n       * event is configured, the deprecation notice will be written\r\n       * to the console but no replacement event will be triggered.\r\n       * @param {string} deprecatedEventName\r\n       * The name of the deprecated event.\r\n       * @param {string} [replacementEventName]\r\n       * The name of the new event.\r\n       */\r\n      deprecate: NGN.const((deprecatedEventName, replacementEventName) => {\r\n        const me = this\r\n\r\n        this.on(deprecatedEventName, function () {\r\n          NGN.WARN(`${deprecatedEventName} is deprecated. ` + (!replacementEventName ? '' : `Use ${replacementEventName} instead.`))\r\n\r\n          if (replacementEventName) {\r\n            let args = NGN.slice(arguments)\r\n\r\n            args.shift()\r\n            args.unshift(replacementEventName)\r\n\r\n            me.emit.apply(me, args)\r\n          }\r\n        })\r\n      }),\r\n\r\n      /**\r\n       * @method pool\r\n       * A helper command to create multiple related subscribers\r\n       * all at once. This is a convenience function.\r\n       * @property {string} [prefix]\r\n       * Supply a prefix to be added to every event. For example,\r\n       * `myScope.` would turn `someEvent` into `myScope.someEvent`.\r\n       * @property {Object} subscriberObject\r\n       * A key:value object where the key is the name of the\r\n       * unprefixed event and the key is the handler function.\r\n       * A value can be an object, allowing for nesting events. For example:\r\n       *\r\n       * ```js\r\n       * NGN.BUS.pool('prefix.', {\r\n       *   deep: {\r\n       *     nested: {\r\n       *       eventName: function () {\r\n       *         console.log('event triggered')\r\n       *       }\r\n       *     }\r\n       *   }\r\n       * })\r\n       *\r\n       * NGN.BUS.emit('prefix.deep.nested.eventName') // <-- Outputs \"event triggered\"\r\n       * ```\r\n       * @private\r\n       */\r\n      pool: NGN.privateconst(function (prefix, group) {\r\n        if (typeof prefix !== 'string') {\r\n          group = prefix\r\n          prefix = ''\r\n        }\r\n\r\n        let pool = {}\r\n\r\n        for (let eventName in group) {\r\n          let topic = `${NGN.coalesce(prefix, '')}${eventName}`\r\n\r\n          if (NGN.isFn(group[eventName])) {\r\n            this.increaseMaxListeners()\r\n\r\n            pool[eventName] = this.on(topic, group[eventName])\r\n          } else if (typeof group[eventName] === 'object') {\r\n            this.pool(`${topic}.`, group[eventName])\r\n          } else {\r\n            NGN.WARN(`${topic} could not be pooled in the event emitter because it's value is not a function.`)\r\n          }\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method attach\r\n       * Attach a function to a topic. This can be used\r\n       * to forward events in response to asynchronous functions.\r\n       *\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * myAsyncDataFetch(NGN.BUS.attach('topicName'))\r\n       * ```\r\n       *\r\n       * This is the same as:\r\n       *\r\n       * ```js\r\n       * myAsyncCall(function(data){\r\n       *  NGN.BUS.emit('topicName', data)\r\n       * })\r\n       * ```\r\n       * @param {string} eventName\r\n       * The name of the event to attach a handler method to.\r\n       * @param {boolean} [preventDefaultAction=false]\r\n       * Setting this to `true` will execute a `event.preventDefault()` before\r\n       * attaching the handler.\r\n       * @returns {function}\r\n       * Returns a function that will automatically be associated with an event.\r\n       */\r\n      attach: NGN.const(function (eventName, preventDefaultAction) {\r\n        preventDefaultAction = NGN.coalesce(preventDefaultAction, false)\r\n\r\n        return (e) => {\r\n          if (preventDefaultAction && !NGN.nodelike) {\r\n            e.preventDefault()\r\n          }\r\n\r\n          this.emit(eventName, ...arguments)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method increaseMaxListeners\r\n       * Increase the number of maximum listeners.\r\n       * @param {Number} [value = 1]\r\n       * The number of events the max listener account will be increased by.\r\n       * @private\r\n       */\r\n      increaseMaxListeners: NGN.private((count = 1) => {\r\n        this.setMaxListeners(this.getMaxListeners() + count)\r\n      }),\r\n\r\n      /**\r\n       * @method decreaseMaxListeners\r\n       * Decrease the number of maximum listeners.\r\n       * @param {Number} [value = 1]\r\n       * The number of events the max listener account will be decreased by.\r\n       * @private\r\n       */\r\n      decreaseMaxListeners: NGN.private((count = 1) => {\r\n        this.setMaxListeners(this.getMaxListeners() - count)\r\n      }),\r\n\r\n      /**\r\n       * @method forward\r\n       * A special subscriber that fires one or more event in response to\r\n       * to an event. This is used to bubble events up/down an event chain.\r\n       *\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * NGN.BUS.forward('sourceEvent', ['someEvent','anotherEvent'], {payload:true})\r\n       * ```\r\n       * When `sourceEvent` is published, the bind method triggers `someEvent` and\r\n       * `anotherEvent`, passing the payload object to `someEvent` and\r\n       * `anotherEvent` subscribers simultaneously.\r\n       *\r\n       * To forward an event to another EventEmitter, see #relay.\r\n       * @param {String} sourceEvent\r\n       * The event to subscribe to.\r\n       * @param {String|Array} triggeredEvent\r\n       * An event or array of events to fire in response to the sourceEvent.\r\n       * @param {any} data\r\n       * Optional data to pass to each bound event handler.\r\n       * @returns {Object}\r\n       * Returns an object with a single `remove()` method.\r\n       */\r\n      forward: NGN.const(function (eventName, triggers, payload) {\r\n        triggers = NGN.forceArray(triggers)\r\n\r\n        let me = this\r\n        let listener = function () {\r\n          let args = NGN.slice(arguments)\r\n\r\n          if (payload) {\r\n            args.push(payload)\r\n          }\r\n\r\n          me.emit(triggers, ...args)\r\n        }\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(eventName, listener)\r\n\r\n        // Provide handle back for removal of topic\r\n        return {\r\n          remove: () => {\r\n            this.decreaseMaxListeners()\r\n            this.off(eventName, listener)\r\n          }\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * This relays an entire event to a different event emitter.\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * let emitterA = new NGN.EventEmitter()\r\n       * let emitterB = new NGN.EventEmitter()\r\n       *\r\n       * emitterA.relay('my.event', emitterB)\r\n       *\r\n       * emitterB.on('my.event', () => { console.log('Emitter B heard the event!') })\r\n       *\r\n       * emitterA.emit('my.event') // Outputs \"Emitter B heard the event!\"\r\n       * ```\r\n       * @param  {string} eventName\r\n       * The name of the event to listen for.\r\n       * @param  {NGN.EventEmitter} targetEmitter\r\n       * The emitter to relay the event to.\r\n       * @param {string} [prefix]\r\n       * An optional prefix to prepend to the eventName.\r\n       * @param {string} [postfix]\r\n       * An optional postfix to append to the eventName.\r\n       */\r\n      relay: NGN.const(function (eventName, targetEmitter, prefix = null, postfix = null) {\r\n        let eventNameList = NGN.forceArray(eventName)\r\n\r\n        for (let i = 0; i < eventNameList.length; i++) {\r\n          let eventName = eventNameList[i]\r\n\r\n          this.on(eventName, function () {\r\n            if (NGN.typeof(this.event) === 'symbol') {\r\n              if (prefix !== null || postfix !== null) {\r\n                NGN.INFO('Cannot relay a symbol-based event with a prefix/postfix.')\r\n              }\r\n\r\n              targetEmitter.emit(...arguments)\r\n            } else {\r\n              targetEmitter.emit(`${NGN.coalesce(prefix, '')}${this.event}${NGN.coalesce(postfix, '')}`, ...arguments)\r\n            }\r\n          })\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * This relays an entire event to a different event emitter. This is\r\n       * the same as #relay, but the event handler is removed after the\r\n       * first invocation of the event.\r\n       *\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * let emitterA = new NGN.EventEmitter()\r\n       * let emitterB = new NGN.EventEmitter()\r\n       *\r\n       * emitterA.relayOnce('my.event', emitterB)\r\n       *\r\n       * emitterB.on('my.event', () => { console.log('Emitter B heard the event!') })\r\n       *\r\n       * emitterA.emit('my.event') // Outputs \"Emitter B heard the event!\"\r\n       * emitterA.emit('my.event') // Does nothing\r\n       * ```\r\n       * @param  {string} eventName\r\n       * The name of the event to listen for.\r\n       * @param  {NGN.EventEmitter} targetEmitter\r\n       * The emitter to relay the event to.\r\n       * @param {string} [prefix]\r\n       * An optional prefix to prepend to the eventName.\r\n       * @param {string} [postfix]\r\n       * An optional postfix to append to the eventName.\r\n       */\r\n      relayOnce: NGN.const(function (eventName, targetEmitter, prefix = null, postfix = null) {\r\n        let eventNameList = NGN.forceArray(eventName)\r\n\r\n        for (let i = 0; i < eventNameList.length; i++) {\r\n          let eventName = eventNameList[i]\r\n\r\n          this.once(eventName, function () {\r\n            if (NGN.typeof(this.event) === 'symbol') {\r\n              if (prefix !== null || postfix !== null) {\r\n                NGN.INFO('Cannot relay a symbol-based event with a prefix/postfix.')\r\n              }\r\n\r\n              targetEmitter.emit(...arguments)\r\n            } else {\r\n              targetEmitter.emit(`${NGN.coalesce(prefix, '')}${this.event}${NGN.coalesce(postfix, '')}`, ...arguments)\r\n            }\r\n          })\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method delayEmit\r\n       * This method waits for the specified duration, then publishes an\r\n       * event once. This will publish the event only once at the end of the\r\n       * wait period, even if the event is triggered multiple times. This can\r\n       * be useful when working with many events triggered in rapid succession.\r\n       *\r\n       * For example, an NGN.DATA.Model representing a person may be used to\r\n       * track a user profile. The NGN.DATA.Model fires an event called `field.update`\r\n       * every time a data field is modified. In many cases, a user may update\r\n       * multiple fields of their profile using a form with a \"Save\" button.\r\n       * Instead of generating a new \"save\" (to disk, to memory, to an API, etc)\r\n       * operation for each field, the publishOnce event can wait until all\r\n       * changes are made before running the save operation.\r\n       *\r\n       * ```js\r\n       * // Create a data model representing a person.\r\n       * var Person = new NGN.DATA.Model({....})\r\n       *\r\n       * // Create a new person record for a user.\r\n       * var user = new Person()\r\n       *\r\n       * // When the user is modified, save the data.\r\n       * user.on('field.update', function () {\r\n       *   // Wait 300 milliseconds to trigger the save event\r\n       *   NGN.BUS.delayEmit('user.save', 300)\r\n       * })\r\n       *\r\n       * // Save the user using an API\r\n       * NGN.BUS.on('user.save', function () {\r\n       *   NGN.NET.put({\r\n       *     url: 'https://my.api.com/user',\r\n       *     json: user.data\r\n       *   })\r\n       * })\r\n       *\r\n       * // Modify the record attributes (which are blank by default)\r\n       * user.firstname = 'John'\r\n       * user.lastname = 'Doe'\r\n       * user.age = 42\r\n       *\r\n       * // Make another update 1 second later\r\n       * setTimeout(function () {\r\n       *   user.age = 32\r\n       * }, 1000)\r\n       * ```\r\n       *\r\n       * The code above sets up a model and record. Then it listens to the record\r\n       * for field updates. Each time it recognizes an update, it queues the \"save\"\r\n       * event. When the queue matures, it fires the `user.save` event.\r\n       *\r\n       * The first `field.update` is triggered when `user.firstname = 'John'` runs.\r\n       * This initiates a queue for `user.save`, set to mature in 300 millisenconds.\r\n       * Next, a `field.update` is triggered when `user.lastname = 'Doe'` runs.\r\n       * This time, since the queue for `user.save` is already initiated, notthing\r\n       * new happens. Finally, a `field.update` is triggered when `user.age = 42`\r\n       * runs. Just like the last one, nothing happens since the `user.save` queue\r\n       * is already active.\r\n       *\r\n       * The `user.save` queue \"matures\" after 300 milliseconds. This means after\r\n       * 300 milliseconds have elapsed, the `user.save` event is triggered. In this\r\n       * example, it means the `NGN.NET.put()` code will be executed. As a result,\r\n       * all 3 change (firstname, lastname, and age) will be complete before the\r\n       * API request is executed. The queue is cleared immediately.\r\n       *\r\n       * The final update occurs 1 second later (700 milliseconds after the queue\r\n       * matures). This triggers a `field.update`, but since the queue is no\r\n       * longer active, it is re-initiated. 300 milliseconds later, the `user.save`\r\n       * event is fired again, thus executing the API request again (1.3 seconds\r\n       * in total).\r\n       * @param {string} eventName\r\n       * The event/topic to publish/emit.\r\n       * @param {Number} [delay=300]\r\n       * The number of milliseconds to wait before firing the event.\r\n       * @param {Any} [payload]\r\n       * An optional payload, such as data to be passed to an event handler.\r\n       */\r\n      delayEmit: NGN.const(function (eventName, delay) {\r\n        if (!this.META.queued.hasOwnProperty(eventName)) {\r\n          let args = NGN.slice(arguments)\r\n          args.splice(1, 1)\r\n\r\n          this.META.queued[eventName] = setTimeout(() => {\r\n            delete this.META.queued[eventName]\r\n            this.emit(...args)\r\n          }, delay)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method getInternalCollectionId\r\n       * Returns a unique ID for special collections.\r\n       * @param {object} collection\r\n       * The collection to generate an ID for.\r\n       * @private\r\n       */\r\n      getInternalCollectionId: NGN.privateconst(function (collection) {\r\n        return Symbol(collection)\r\n        // let time = (new Date()).getTime().toString()\r\n        // let rand = Math.random().toString()\r\n        // let key = Object.keys(collection).length + 1\r\n        //\r\n        // while (collection.hasOwnProperty(`${key.toString()}${time}${rand}`)) {\r\n        //   key++\r\n        // }\r\n        //\r\n        // return `${key.toString()}${time}${rand}`\r\n      }),\r\n\r\n      /**\r\n       * @method handleCollectionTrigger\r\n       * A method to manage #chain event handlers.\r\n       * @private\r\n       */\r\n      handleCollectionTrigger: NGN.privateconst(function (eventName, key) {\r\n        let me = this\r\n\r\n        return function () {\r\n          // Use setTimeout to simulate nextTick\r\n          setTimeout(() => {\r\n            let cq = me.META.collectionQueue\r\n\r\n            if (cq[key]) {\r\n              cq[key].remainingqueue.delete(eventName)\r\n\r\n              if (cq[key].remainingqueue.size === 0) {\r\n                cq[key].remainingqueue = cq[key].masterqueue\r\n\r\n                if (NGN.isFn(cq[key].eventName)) {\r\n                  cq[key].eventName(cq[key].payload)\r\n                } else {\r\n                  me.emit(cq[key].eventName, cq[key].payload)\r\n                }\r\n              }\r\n            }\r\n          }, 0)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method funnel\r\n       * Emit an event after a collection of unique events have all fired.\r\n       * This can be useful in situations where multiple asynchronous actions\r\n       * must complete before another begins. For example, blending 3\r\n       * remote data sources from different API's into a single resultset\r\n       * can be achieved with this.\r\n       *\r\n       * **Example**\r\n       * ```js\r\n       * let collection = NGN.BUS.funnel(['download1done', 'download2done', 'download3done'], 'make.results')\r\n       *\r\n       * let allData = []\r\n       *\r\n       * // When all of the downloads are done, log them.\r\n       * NGN.BUS.on('make.results', () => {\r\n       *   console.log(allData)\r\n       * })\r\n       *\r\n       * // Download the first set of data asynchronously\r\n       * NGN.NET.json('http:/download1.com/data.json', (data) => {\r\n       *   allData.push(data)\r\n       *   NGN.BUS.emit('download1done')\r\n       * })\r\n       *\r\n       * // Download the second set of data asynchronously\r\n       * NGN.NET.json('http:/download2.com/data.json', (data) => {\r\n       *   allData.push(data)\r\n       *   NGN.BUS.emit('download2done')\r\n       * })\r\n       *\r\n       * // Download the third set of data asynchronously\r\n       * NGN.NET.json('http:/download3.com/data.json', (data) => {\r\n       *   allData.push(data)\r\n       *   NGN.BUS.emit('download3done')\r\n       * })\r\n       *\r\n       * // The handler can be removed with the special method:\r\n       * collection.remove()\r\n       * ```\r\n       * @param {array} eventCollection\r\n       * An array of events. Once _all_ of these events have fired,\r\n       * the triggerEventName will be fired.\r\n       * @param {string|function} triggerEventName\r\n       * The name of the event triggered after the collection has completed.\r\n       * This can also be a callback function. If a callback function is provided,\r\n       * it will receive the payload as the only argument when it is triggered.\r\n       * @param {any} [payload]\r\n       * An optional payload delivered to the #triggerEventName.\r\n       * @returns {object} collection\r\n       * Provides the key/value configuration of the collection.\r\n       * ```js\r\n       * {\r\n       *   masterqueue: ['event1', 'event2', 'etc'], // The original event array (non-editable)\r\n       *   remainingqueue: [...], // The events the BUS is still waiting for before firing the trigger event.\r\n       *   eventName: 'triggeredEventName', // Name of the event triggered after the remaining elements are flushed.\r\n       *   payload: 'anything', // OPTIONAL\r\n       *   remove: [Function]\r\n       * }\r\n       * ```\r\n       */\r\n      funnel: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        if (NGN.typeof(eventCollection) !== 'array') {\r\n          throw new Error(`NGN.BUS.funnel expected an array of events, but received a(n) ${NGN.typeof(eventCollection)}`)\r\n        }\r\n\r\n        let collection = new Set(eventCollection)\r\n        let key = this.getInternalCollectionId(this.META.collectionQueue)\r\n\r\n        this.META.collectionQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.collectionQueue[key], {\r\n          masterqueue: NGN.const(new Set(eventCollection)),\r\n          remainingqueue: NGN.private(collection),\r\n          eventName: NGN.const(triggerEventName),\r\n          remove: NGN.const(() => {\r\n            this.META.collectionQueue[key].masterqueue.forEach(event => {\r\n              this.off(event, this.handleCollectionTrigger(event, key))\r\n            })\r\n\r\n            this.decreaseMaxListeners(this.META.collectionQueue[key].masterqueue.size)\r\n\r\n            delete this.META.collectionQueue[key]\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners(collection.size)\r\n\r\n        collection.forEach(event => {\r\n          this.on(event, this.handleCollectionTrigger(event, key))\r\n        })\r\n\r\n        return this.META.collectionQueue[key]\r\n      }),\r\n\r\n      /**\r\n       * @method funnelOnce\r\n       * This provides the same functionality as #funnel, but\r\n       * removes the listener after the resultant event has fired.\r\n       * See #funnel for detailed usage.\r\n       * @param {array} eventCollection\r\n       * An array of events. Once _all_ of these events have fired,\r\n       * the triggerEventName will be fired.\r\n       * @param {string} triggerEventName\r\n       * The name of the event triggered after the collection has completed.\r\n       * @param {any} [payload]\r\n       * An optional payload delivered to the #triggerEventName.\r\n       * @returns {object} collection\r\n       * Provides the key/value configuration of the collection.\r\n       */\r\n      funnelOnce: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        let funnelClosureEvent = `::NGNFUNNEL::${(new Date()).getTime()}::${triggerEventName}`\r\n        // let funnelClosureEvent = Symbol(triggerEventName)\r\n        let collection = this.funnel(eventCollection, funnelClosureEvent, payload)\r\n\r\n        this.increaseMaxListeners()\r\n        this.once(funnelClosureEvent, () => {\r\n          collection.remove()\r\n          collection = null\r\n          this.emit(triggerEventName, payload)\r\n        })\r\n      }),\r\n\r\n      /**\r\n       * @method threshold\r\n       * After an event is fired a predetermined number of times (the threshold),\r\n       * trigger another event or function.\r\n       *\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * NGN.BUS.threshold('push.my.button', 3, 'annoyed')\r\n       *\r\n       * NGN.BUS.on('annoyed', function () {\r\n       *   console.log('We apologize for the slow response, but excessive clicking will not speed up the process.')\r\n       * })\r\n       *\r\n       * document.getElementById('#myButton').addEventListener('click', NGN.BUS.attach('push.my.button'))\r\n       * ```\r\n       *\r\n       * Once the threshold is exceeded, the final event will be triggered and\r\n       * the threshold will be reset. Using the example above, this means\r\n       * clicking 3 times on `#myButton` would trigger the `annoyed` event ONCE,\r\n       * 6 times triggers `annoyed` TWICE, 9 times triggers `annoyed` THREE times, etc.\r\n       * @param {string} thresholdEventName\r\n       * The name of the event to count.\r\n       * @param {number} limit\r\n       * The number of occurrances allowed until the final event is triggered.\r\n       * The event will be triggered at the threshold. For example, if the limit\r\n       * is `3`, the finalEvent will be triggered the 3rd time thresholdEventName is\r\n       * fired.\r\n       * @param {string|function} finalEventName\r\n       * This can be an event or callback function triggered when the threshold is crossed.\r\n       * If a callback function is specified, the payload is passed as the only argument.\r\n       * @param {any} [payload]\r\n       * An optional payload to send to the finalEvent handler(s).\r\n       * @returns {object}\r\n       * Returns an object that can be used to remove the threshold.\r\n       *\r\n       */\r\n      threshold: NGN.const(function (thresholdEventName, limit, finalEventName, payload = null) {\r\n        if (typeof thresholdEventName !== 'string') {\r\n          throw new Error('The threshold event name must be a string (received ' + (typeof thresholdEventName) + ')')\r\n        }\r\n\r\n        // let key = `${this.getInternalCollectionId(this.META.thresholdQueue)}${limit.toString()}`\r\n        let key = this.getInternalCollectionId(this.META.thresholdQueue)\r\n\r\n        this.META.thresholdQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.thresholdQueue[key], {\r\n          key: NGN.const(key),\r\n          eventName: NGN.const(thresholdEventName),\r\n          limit: NGN.const(limit),\r\n          count: NGN.private(0),\r\n          finalEventName: NGN.const(finalEventName),\r\n          remove: NGN.const(() => {\r\n            let event = this.META.thresholdQueue[key].eventName\r\n\r\n            delete this.META.thresholdQueue[key]\r\n\r\n            this.decreaseMaxListeners()\r\n            this.off(event, this.handleThresholdTrigger(key))\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(thresholdEventName, this.handleThresholdTrigger(key))\r\n\r\n        return this.META.thresholdQueue[key]\r\n      }),\r\n\r\n      thresholdOnce: NGN.const(function (thresholdEventName, limit, finalEventName, payload = null) {\r\n        let thresholdClosureEvent = `::NGNTHRESHOLD::${(new Date()).getTime()}::${finalEventName}`\r\n        let threshold = this.threshold(thresholdEventName, limit, thresholdClosureEvent, payload)\r\n\r\n        this.once(thresholdClosureEvent, () => {\r\n          threshold.remove()\r\n          threshold = null\r\n          this.emit(finalEventName, payload)\r\n        })\r\n      }),\r\n\r\n      /**\r\n       * @method handleThresholdTrigger\r\n       * A method to manage #threshold event handlers.\r\n       * @private\r\n       */\r\n      handleThresholdTrigger: NGN.const(function (key) {\r\n        let me = this\r\n        return function () {\r\n          // Use setTimeout to simulate nextTick\r\n          setTimeout(() => {\r\n            if (me.META.thresholdQueue.hasOwnProperty(key)) {\r\n              me.META.thresholdQueue[key].count++\r\n              if (me.META.thresholdQueue[key].count === me.META.thresholdQueue[key].limit) {\r\n                if (NGN.isFn(me.META.thresholdQueue[key].finalEventName)) {\r\n                  me.META.thresholdQueue[key].finalEventName(me.META.thresholdQueue[key].payload)\r\n                } else {\r\n                  me.emit(me.META.thresholdQueue[key].finalEventName, me.META.thresholdQueue[key].payload)\r\n                }\r\n\r\n                // This if statement is required in case the event is removed\r\n                // during the reset process.\r\n                if (me.META.thresholdQueue.hasOwnProperty(key)) {\r\n                  me.META.thresholdQueue[key].count = 0\r\n                }\r\n              }\r\n            }\r\n          }, 0)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * An internal method to wrap node-based event handlers\r\n       * with the proper scope.\r\n       * @param {string} eventName\r\n       * The name of the event being handled.\r\n       * @param {function} handlerFn\r\n       * The handler function.\r\n       */\r\n      wrapEventHandlerWithScope: NGN.privateconst((name, fn) => {\r\n        if (!NGN.nodelike) {\r\n          return fn\r\n        }\r\n\r\n        const handlerFn = fn\r\n\r\n        return function () {\r\n          let args = arguments\r\n\r\n          if (typeof args[args.length - 1] === 'symbol') {\r\n            name = args[args.length - 1].toString().replace(/Symbol\\(|\\)/gi, '')\r\n            args = NGN.slice(args)\r\n            args.pop()\r\n          }\r\n\r\n          handlerFn.apply({ event: name }, args)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * An internal method to apply scope based on whether the handler\r\n       * is a Node-like \"once\" emitter or not.\r\n       * @param {string} eventName\r\n       * The name of the event being scoped.\r\n       * @param {function} handlerFn\r\n       * The handler function.\r\n       */\r\n      applyScope: NGN.privateconst((args) => {\r\n        if (NGN.nodelike && args.length > 1) {\r\n          if (args[args.length - 1].listener) {\r\n            args[args.length - 1].listener = this.wrapEventHandlerWithScope(\r\n              args[0],\r\n              args[args.length - 1].listener\r\n            )\r\n          } else {\r\n            args[args.length - 1] = this.wrapEventHandlerWithScope(\r\n              args[0],\r\n              args[args.length - 1]\r\n            )\r\n          }\r\n        }\r\n      })\r\n    })\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 25,
+        "column": 2
+      },
+      "end": {
+        "line": 807,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "setTTL": {
+      "type": "method",
+      "label": "setTTL",
+      "description": "Set a default time-to-live for event handlers .\nAfter the TTL period elapses, event handlers are removed.\nBy default, there is no TTL (`-1`).",
+      "code": "setTTL: NGN.const((ttl = -1) => {\r\n        if (ttl === 0) {\r\n          NGN.WARN('NGN.EventEmitter#TTL cannot be 0.')\r\n          return\r\n        }\r\n\r\n        this.META.defaultTTL = ttl\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 51,
+        "column": 6
+      },
+      "end": {
+        "line": 58,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "ttl": {
+          "type": "argument",
+          "label": "ttl",
+          "description": "The number of milliseconds before an event handler is automatically\nremoved. This value may be `-1`  or a value\ngreater than `0`.",
+          "code": "setTTL: NGN.const((ttl = -1) => {\r\n        if (ttl === 0) {\r\n          NGN.WARN('NGN.EventEmitter#TTL cannot be 0.')\r\n          return\r\n        }\r\n\r\n        this.META.defaultTTL = ttl\r\n      })",
+          "start": {
+            "line": 51,
+            "column": 6
+          },
+          "end": {
+            "line": 58,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": [
+            "no TTL/never expires"
+          ]
+        },
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "Name of the event to remove.",
+          "code": "off: NGN.public((eventName, handlerFn) => {\r\n        if (NGN.typeof(eventName) === 'array') {\r\n          for (let i = 0; i < eventName.length; i++) {\r\n            this.off(eventName[i], handlerFn)\r\n          }\r\n\r\n          return\r\n        }\r\n\r\n        let l = this.listeners(eventName)\r\n\r\n        if (!NGN.isFn(handlerFn)) {\r\n          return this.clear(eventName)\r\n        }\r\n\r\n        let wrappedHandlerFn = this.wrapEventHandlerWithScope(eventName, handlerFn)\r\n\r\n        if (l.indexOf(wrappedHandlerFn) < 0) {\r\n          for (let i = 0; i < l.length; i++) {\r\n            if (l[i].toString() === wrappedHandlerFn.toString()) {\r\n              this.META.wildcardEvents.delete(eventName)\r\n              // this.removeListener(eventName, handlerFn)\r\n              this.removeListener(eventName, l[i], false)\r\n              break\r\n            }\r\n          }\r\n        } else {\r\n          this.META.wildcardEvents.delete(eventName)\r\n          this.removeListener(eventName, handlerFn)\r\n        }\r\n      })",
+          "start": {
+            "line": 70,
+            "column": 6
+          },
+          "end": {
+            "line": 100,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "handlerFn": {
+          "type": "method",
+          "label": "handlerFn",
+          "description": "The handler function to remove from the event handlers.",
+          "code": "@param {function} [handlerFn]\nThe handler function to remove from the event handlers.",
+          "start": {
+            "line": 70,
+            "column": 6
+          },
+          "end": {
+            "line": 100,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#setTTL",
+      "override": false,
+      "private": false
+    },
+    "deprecate": {
+      "type": "method",
+      "label": "deprecate",
+      "description": "Provides a deprecation notice for the specified event.\nAutomatically emits the appropriate \"replacement\" event\nif a replacement event is configured. If no replacement\nevent is configured, the deprecation notice will be written\nto the console but no replacement event will be triggered.",
+      "code": "deprecate: NGN.const((deprecatedEventName, replacementEventName) => {\r\n        const me = this\r\n\r\n        this.on(deprecatedEventName, function () {\r\n          NGN.WARN(`${deprecatedEventName} is deprecated. ` + (!replacementEventName ? '' : `Use ${replacementEventName} instead.`))\r\n\r\n          if (replacementEventName) {\r\n            let args = NGN.slice(arguments)\r\n\r\n            args.shift()\r\n            args.unshift(replacementEventName)\r\n\r\n            me.emit.apply(me, args)\r\n          }\r\n        })\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 114,
+        "column": 6
+      },
+      "end": {
+        "line": 129,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "deprecatedEventName": {
+          "type": "argument",
+          "label": "deprecatedEventName",
+          "description": "The name of the deprecated event.",
+          "code": "deprecate: NGN.const((deprecatedEventName, replacementEventName) => {\r\n        const me = this\r\n\r\n        this.on(deprecatedEventName, function () {\r\n          NGN.WARN(`${deprecatedEventName} is deprecated. ` + (!replacementEventName ? '' : `Use ${replacementEventName} instead.`))\r\n\r\n          if (replacementEventName) {\r\n            let args = NGN.slice(arguments)\r\n\r\n            args.shift()\r\n            args.unshift(replacementEventName)\r\n\r\n            me.emit.apply(me, args)\r\n          }\r\n        })\r\n      })",
+          "start": {
+            "line": 114,
+            "column": 6
+          },
+          "end": {
+            "line": 129,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "replacementEventName": {
+          "type": "argument",
+          "label": "replacementEventName",
+          "description": "The name of the new event.",
+          "code": "deprecate: NGN.const((deprecatedEventName, replacementEventName) => {\r\n        const me = this\r\n\r\n        this.on(deprecatedEventName, function () {\r\n          NGN.WARN(`${deprecatedEventName} is deprecated. ` + (!replacementEventName ? '' : `Use ${replacementEventName} instead.`))\r\n\r\n          if (replacementEventName) {\r\n            let args = NGN.slice(arguments)\r\n\r\n            args.shift()\r\n            args.unshift(replacementEventName)\r\n\r\n            me.emit.apply(me, args)\r\n          }\r\n        })\r\n      })",
+          "start": {
+            "line": 114,
+            "column": 6
+          },
+          "end": {
+            "line": 129,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#deprecate",
+      "override": false,
+      "private": false
+    },
+    "pool": {
+      "type": "method",
+      "label": "pool",
+      "description": "A helper command to create multiple related subscribers\nall at once. This is a convenience function.",
+      "code": "pool: NGN.privateconst(function (prefix, group) {\r\n        if (typeof prefix !== 'string') {\r\n          group = prefix\r\n          prefix = ''\r\n        }\r\n\r\n        let pool = {}\r\n\r\n        for (let eventName in group) {\r\n          let topic = `${NGN.coalesce(prefix, '')}${eventName}`\r\n\r\n          if (NGN.isFn(group[eventName])) {\r\n            this.increaseMaxListeners()\r\n\r\n            pool[eventName] = this.on(topic, group[eventName])\r\n          } else if (typeof group[eventName] === 'object') {\r\n            this.pool(`${topic}.`, group[eventName])\r\n          } else {\r\n            NGN.WARN(`${topic} could not be pooled in the event emitter because it's value is not a function.`)\r\n          }\r\n        }\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 158,
+        "column": 6
+      },
+      "end": {
+        "line": 179,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "prefix": {
+          "type": "argument",
+          "label": "prefix",
+          "description": null,
+          "code": "prefix",
+          "start": {
+            "line": 158,
+            "column": 39
+          },
+          "end": {
+            "line": 158,
+            "column": 45
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "group": {
+          "type": "argument",
+          "label": "group",
+          "description": null,
+          "code": "group",
+          "start": {
+            "line": 158,
+            "column": 47
+          },
+          "end": {
+            "line": 158,
+            "column": 52
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#pool",
+      "override": false,
+      "private": true
+    },
+    "attach": {
+      "type": "method",
+      "label": "attach",
+      "description": "Attach a function to a topic. This can be used\nto forward events in response to asynchronous functions.\n\nFor example:\n\n```js\nmyAsyncDataFetch\n```\n\nThis is the same as:\n\n```js\nmyAsyncCall(function(data){\nNGN.BUS.emit('topicName', data)\n})\n```",
+      "code": "attach: NGN.const(function (eventName, preventDefaultAction) {\r\n        preventDefaultAction = NGN.coalesce(preventDefaultAction, false)\r\n\r\n        return (e) => {\r\n          if (preventDefaultAction && !NGN.nodelike) {\r\n            e.preventDefault()\r\n          }\r\n\r\n          this.emit(eventName, ...arguments)\r\n        }\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 207,
+        "column": 6
+      },
+      "end": {
+        "line": 217,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "The name of the event to attach a handler method to.",
+          "code": "attach: NGN.const(function (eventName, preventDefaultAction) {\r\n        preventDefaultAction = NGN.coalesce(preventDefaultAction, false)\r\n\r\n        return (e) => {\r\n          if (preventDefaultAction && !NGN.nodelike) {\r\n            e.preventDefault()\r\n          }\r\n\r\n          this.emit(eventName, ...arguments)\r\n        }\r\n      })",
+          "start": {
+            "line": 207,
+            "column": 6
+          },
+          "end": {
+            "line": 217,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "preventDefaultAction": {
+          "type": "argument",
+          "label": "preventDefaultAction",
+          "description": "Setting this to `true` will execute a `event.preventDefault` before\nattaching the handler.",
+          "code": "attach: NGN.const(function (eventName, preventDefaultAction) {\r\n        preventDefaultAction = NGN.coalesce(preventDefaultAction, false)\r\n\r\n        return (e) => {\r\n          if (preventDefaultAction && !NGN.nodelike) {\r\n            e.preventDefault()\r\n          }\r\n\r\n          this.emit(eventName, ...arguments)\r\n        }\r\n      })",
+          "start": {
+            "line": 207,
+            "column": 6
+          },
+          "end": {
+            "line": 217,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": [
+            ""
+          ]
+        }
+      },
+      "returnType": "function",
+      "returnDescription": "null Returns a function that will automatically be associated with an event.",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#attach",
+      "override": false,
+      "private": false
+    },
+    "increaseMaxListeners": {
+      "type": "method",
+      "label": "increaseMaxListeners",
+      "description": "Increase the number of maximum listeners.",
+      "code": "increaseMaxListeners: NGN.private((count = 1) => {\r\n        this.setMaxListeners(this.getMaxListeners() + count)\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 226,
+        "column": 6
+      },
+      "end": {
+        "line": 228,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "count": {
+          "type": "argument",
+          "label": "value ",
+          "description": "The number of events the max listener account will be increased by.",
+          "code": "count = 1",
+          "start": {
+            "line": 226,
+            "column": 41
+          },
+          "end": {
+            "line": 226,
+            "column": 50
+          },
+          "flags": [],
+          "authors": [],
+          "default": " 1",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        },
+        "value ": {
+          "type": "argument",
+          "label": "value ",
+          "description": "The number of events the max listener account will be increased by.",
+          "code": "increaseMaxListeners: NGN.private((count = 1) => {\r\n        this.setMaxListeners(this.getMaxListeners() + count)\r\n      })",
+          "start": {
+            "line": 226,
+            "column": 6
+          },
+          "end": {
+            "line": 228,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": " 1",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#increaseMaxListeners",
+      "override": false,
+      "private": true
+    },
+    "decreaseMaxListeners": {
+      "type": "method",
+      "label": "decreaseMaxListeners",
+      "description": "Decrease the number of maximum listeners.",
+      "code": "decreaseMaxListeners: NGN.private((count = 1) => {\r\n        this.setMaxListeners(this.getMaxListeners() - count)\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 237,
+        "column": 6
+      },
+      "end": {
+        "line": 239,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "count": {
+          "type": "argument",
+          "label": "value ",
+          "description": "The number of events the max listener account will be decreased by.",
+          "code": "count = 1",
+          "start": {
+            "line": 237,
+            "column": 41
+          },
+          "end": {
+            "line": 237,
+            "column": 50
+          },
+          "flags": [],
+          "authors": [],
+          "default": " 1",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        },
+        "value ": {
+          "type": "argument",
+          "label": "value ",
+          "description": "The number of events the max listener account will be decreased by.",
+          "code": "decreaseMaxListeners: NGN.private((count = 1) => {\r\n        this.setMaxListeners(this.getMaxListeners() - count)\r\n      })",
+          "start": {
+            "line": 237,
+            "column": 6
+          },
+          "end": {
+            "line": 239,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": " 1",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#decreaseMaxListeners",
+      "override": false,
+      "private": true
+    },
+    "forward": {
+      "type": "method",
+      "label": "forward",
+      "description": "A special subscriber that fires one or more event in response to\nto an event. This is used to bubble events up/down an event chain.\n\nFor example:\n\n```js\nNGN.BUS.forward\n```\nWhen `sourceEvent` is published, the bind method triggers `someEvent` and\n`anotherEvent`, passing the payload object to `someEvent` and\n`anotherEvent` subscribers simultaneously.\n\nTo forward an event to another EventEmitter, see #relay.",
+      "code": "forward: NGN.const(function (eventName, triggers, payload) {\r\n        triggers = NGN.forceArray(triggers)\r\n\r\n        let me = this\r\n        let listener = function () {\r\n          let args = NGN.slice(arguments)\r\n\r\n          if (payload) {\r\n            args.push(payload)\r\n          }\r\n\r\n          me.emit(triggers, ...args)\r\n        }\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(eventName, listener)\r\n\r\n        // Provide handle back for removal of topic\r\n        return {\r\n          remove: () => {\r\n            this.decreaseMaxListeners()\r\n            this.off(eventName, listener)\r\n          }\r\n        }\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 265,
+        "column": 6
+      },
+      "end": {
+        "line": 289,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "The name of the event to listen for.",
+          "code": "relayOnce: NGN.const(function (eventName, targetEmitter, prefix = null, postfix = null) {\r\n        let eventNameList = NGN.forceArray(eventName)\r\n\r\n        for (let i = 0; i < eventNameList.length; i++) {\r\n          let eventName = eventNameList[i]\r\n\r\n          this.once(eventName, function () {\r\n            if (NGN.typeof(this.event) === 'symbol') {\r\n              if (prefix !== null || postfix !== null) {\r\n                NGN.INFO('Cannot relay a symbol-based event with a prefix/postfix.')\r\n              }\r\n\r\n              targetEmitter.emit(...arguments)\r\n            } else {\r\n              targetEmitter.emit(`${NGN.coalesce(prefix, '')}${this.event}${NGN.coalesce(postfix, '')}`, ...arguments)\r\n            }\r\n          })\r\n        }\r\n      })",
+          "start": {
+            "line": 361,
+            "column": 6
+          },
+          "end": {
+            "line": 379,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "triggers": {
+          "type": "argument",
+          "label": "triggeredEvent",
+          "description": "An event or array of events to fire in response to the sourceEvent.",
+          "code": "triggers",
+          "start": {
+            "line": 265,
+            "column": 46
+          },
+          "end": {
+            "line": 265,
+            "column": 54
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|array",
+          "required": true,
+          "enum": null
+        },
+        "payload": {
+          "type": "argument",
+          "label": "data",
+          "description": "Optional data to pass to each bound event handler.",
+          "code": "payload",
+          "start": {
+            "line": 265,
+            "column": 56
+          },
+          "end": {
+            "line": 265,
+            "column": 63
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "sourceEvent": {
+          "type": "argument",
+          "label": "sourceEvent",
+          "description": "The event to subscribe to.",
+          "code": "forward: NGN.const(function (eventName, triggers, payload) {\r\n        triggers = NGN.forceArray(triggers)\r\n\r\n        let me = this\r\n        let listener = function () {\r\n          let args = NGN.slice(arguments)\r\n\r\n          if (payload) {\r\n            args.push(payload)\r\n          }\r\n\r\n          me.emit(triggers, ...args)\r\n        }\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(eventName, listener)\r\n\r\n        // Provide handle back for removal of topic\r\n        return {\r\n          remove: () => {\r\n            this.decreaseMaxListeners()\r\n            this.off(eventName, listener)\r\n          }\r\n        }\r\n      })",
+          "start": {
+            "line": 265,
+            "column": 6
+          },
+          "end": {
+            "line": 289,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "triggeredEvent": {
+          "type": "argument",
+          "label": "triggeredEvent",
+          "description": "An event or array of events to fire in response to the sourceEvent.",
+          "code": "forward: NGN.const(function (eventName, triggers, payload) {\r\n        triggers = NGN.forceArray(triggers)\r\n\r\n        let me = this\r\n        let listener = function () {\r\n          let args = NGN.slice(arguments)\r\n\r\n          if (payload) {\r\n            args.push(payload)\r\n          }\r\n\r\n          me.emit(triggers, ...args)\r\n        }\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(eventName, listener)\r\n\r\n        // Provide handle back for removal of topic\r\n        return {\r\n          remove: () => {\r\n            this.decreaseMaxListeners()\r\n            this.off(eventName, listener)\r\n          }\r\n        }\r\n      })",
+          "start": {
+            "line": 265,
+            "column": 6
+          },
+          "end": {
+            "line": 289,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|array",
+          "required": true,
+          "enum": null
+        },
+        "data": {
+          "type": "argument",
+          "label": "data",
+          "description": "Optional data to pass to each bound event handler.",
+          "code": "forward: NGN.const(function (eventName, triggers, payload) {\r\n        triggers = NGN.forceArray(triggers)\r\n\r\n        let me = this\r\n        let listener = function () {\r\n          let args = NGN.slice(arguments)\r\n\r\n          if (payload) {\r\n            args.push(payload)\r\n          }\r\n\r\n          me.emit(triggers, ...args)\r\n        }\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(eventName, listener)\r\n\r\n        // Provide handle back for removal of topic\r\n        return {\r\n          remove: () => {\r\n            this.decreaseMaxListeners()\r\n            this.off(eventName, listener)\r\n          }\r\n        }\r\n      })",
+          "start": {
+            "line": 265,
+            "column": 6
+          },
+          "end": {
+            "line": 289,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "targetEmitter": {
+          "type": "argument",
+          "label": "targetEmitter",
+          "description": "The emitter to relay the event to.",
+          "code": "relayOnce: NGN.const(function (eventName, targetEmitter, prefix = null, postfix = null) {\r\n        let eventNameList = NGN.forceArray(eventName)\r\n\r\n        for (let i = 0; i < eventNameList.length; i++) {\r\n          let eventName = eventNameList[i]\r\n\r\n          this.once(eventName, function () {\r\n            if (NGN.typeof(this.event) === 'symbol') {\r\n              if (prefix !== null || postfix !== null) {\r\n                NGN.INFO('Cannot relay a symbol-based event with a prefix/postfix.')\r\n              }\r\n\r\n              targetEmitter.emit(...arguments)\r\n            } else {\r\n              targetEmitter.emit(`${NGN.coalesce(prefix, '')}${this.event}${NGN.coalesce(postfix, '')}`, ...arguments)\r\n            }\r\n          })\r\n        }\r\n      })",
+          "start": {
+            "line": 361,
+            "column": 6
+          },
+          "end": {
+            "line": 379,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngn.eventemitter",
+          "required": true,
+          "enum": null
+        },
+        "prefix": {
+          "type": "argument",
+          "label": "prefix",
+          "description": "An optional prefix to prepend to the eventName.",
+          "code": "relayOnce: NGN.const(function (eventName, targetEmitter, prefix = null, postfix = null) {\r\n        let eventNameList = NGN.forceArray(eventName)\r\n\r\n        for (let i = 0; i < eventNameList.length; i++) {\r\n          let eventName = eventNameList[i]\r\n\r\n          this.once(eventName, function () {\r\n            if (NGN.typeof(this.event) === 'symbol') {\r\n              if (prefix !== null || postfix !== null) {\r\n                NGN.INFO('Cannot relay a symbol-based event with a prefix/postfix.')\r\n              }\r\n\r\n              targetEmitter.emit(...arguments)\r\n            } else {\r\n              targetEmitter.emit(`${NGN.coalesce(prefix, '')}${this.event}${NGN.coalesce(postfix, '')}`, ...arguments)\r\n            }\r\n          })\r\n        }\r\n      })",
+          "start": {
+            "line": 361,
+            "column": 6
+          },
+          "end": {
+            "line": 379,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": false,
+          "enum": null
+        },
+        "postfix": {
+          "type": "argument",
+          "label": "postfix",
+          "description": "An optional postfix to append to the eventName.",
+          "code": "relayOnce: NGN.const(function (eventName, targetEmitter, prefix = null, postfix = null) {\r\n        let eventNameList = NGN.forceArray(eventName)\r\n\r\n        for (let i = 0; i < eventNameList.length; i++) {\r\n          let eventName = eventNameList[i]\r\n\r\n          this.once(eventName, function () {\r\n            if (NGN.typeof(this.event) === 'symbol') {\r\n              if (prefix !== null || postfix !== null) {\r\n                NGN.INFO('Cannot relay a symbol-based event with a prefix/postfix.')\r\n              }\r\n\r\n              targetEmitter.emit(...arguments)\r\n            } else {\r\n              targetEmitter.emit(`${NGN.coalesce(prefix, '')}${this.event}${NGN.coalesce(postfix, '')}`, ...arguments)\r\n            }\r\n          })\r\n        }\r\n      })",
+          "start": {
+            "line": 361,
+            "column": 6
+          },
+          "end": {
+            "line": 379,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "Object",
+      "returnDescription": "null Returns an object with a single `remove` method.",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#forward",
+      "override": false,
+      "private": false
+    },
+    "delayEmit": {
+      "type": "method",
+      "label": "delayEmit",
+      "description": "This method waits for the specified duration, then publishes an\nevent once. This will publish the event only once at the end of the\nwait period, even if the event is triggered multiple times. This can\nbe useful when working with many events triggered in rapid succession.\n\nFor example, an NGN.DATA.Model representing a person may be used to\ntrack a user profile. The NGN.DATA.Model fires an event called `field.update`\nevery time a data field is modified. In many cases, a user may update\nmultiple fields of their profile using a form with a \"Save\" button.\nInstead of generating a new \"save\" \noperation for each field, the publishOnce event can wait until all\nchanges are made before running the save operation.\n\n```js\n// Create a data model representing a person.\nvar Person = new NGN.DATA.Model({....})\n\n// Create a new person record for a user.\nvar user = new Person()\n\n// When the user is modified, save the data.\nuser.on('field.update', function () {\n// Wait 300 milliseconds to trigger the save event\nNGN.BUS.delayEmit('user.save', 300)\n})\n\n// Save the user using an API\nNGN.BUS.on('user.save', function () {\nNGN.NET.put({\nurl: 'https://my.api.com/user',\njson: user.data\n})\n})\n\n// Modify the record attributes (which are blank by default)\nuser.firstname = 'John'\nuser.lastname = 'Doe'\nuser.age = 42\n\n// Make another update 1 second later\nsetTimeout(function () {\nuser.age = 32\n}, 1000)\n```\n\nThe code above sets up a model and record. Then it listens to the record\nfor field updates. Each time it recognizes an update, it queues the \"save\"\nevent. When the queue matures, it fires the `user.save` event.\n\nThe first `field.update` is triggered when `user.firstname = 'John'` runs.\nThis initiates a queue for `user.save`, set to mature in 300 millisenconds.\nNext, a `field.update` is triggered when `user.lastname = 'Doe'` runs.\nThis time, since the queue for `user.save` is already initiated, notthing\nnew happens. Finally, a `field.update` is triggered when `user.age = 42`\nruns. Just like the last one, nothing happens since the `user.save` queue\nis already active.\n\nThe `user.save` queue \"matures\" after 300 milliseconds. This means after\n300 milliseconds have elapsed, the `user.save` event is triggered. In this\nexample, it means the `NGN.NET.put()` code will be executed. As a result,\nall 3 change (firstname, lastname, and age) will be complete before the\nAPI request is executed. The queue is cleared immediately.\n\nThe final update occurs 1 second later (700 milliseconds after the queue\nmatures). This triggers a `field.update`, but since the queue is no\nlonger active, it is re-initiated. 300 milliseconds later, the `user.save`\nevent is fired again, thus executing the API request again (1.3 seconds\nin total).",
+      "code": "delayEmit: NGN.const(function (eventName, delay) {\r\n        if (!this.META.queued.hasOwnProperty(eventName)) {\r\n          let args = NGN.slice(arguments)\r\n          args.splice(1, 1)\r\n\r\n          this.META.queued[eventName] = setTimeout(() => {\r\n            delete this.META.queued[eventName]\r\n            this.emit(...args)\r\n          }, delay)\r\n        }\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 458,
+        "column": 6
+      },
+      "end": {
+        "line": 468,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "The event/topic to publish/emit.",
+          "code": "delayEmit: NGN.const(function (eventName, delay) {\r\n        if (!this.META.queued.hasOwnProperty(eventName)) {\r\n          let args = NGN.slice(arguments)\r\n          args.splice(1, 1)\r\n\r\n          this.META.queued[eventName] = setTimeout(() => {\r\n            delete this.META.queued[eventName]\r\n            this.emit(...args)\r\n          }, delay)\r\n        }\r\n      })",
+          "start": {
+            "line": 458,
+            "column": 6
+          },
+          "end": {
+            "line": 468,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "delay": {
+          "type": "argument",
+          "label": "delay",
+          "description": "The number of milliseconds to wait before firing the event.",
+          "code": "delayEmit: NGN.const(function (eventName, delay) {\r\n        if (!this.META.queued.hasOwnProperty(eventName)) {\r\n          let args = NGN.slice(arguments)\r\n          args.splice(1, 1)\r\n\r\n          this.META.queued[eventName] = setTimeout(() => {\r\n            delete this.META.queued[eventName]\r\n            this.emit(...args)\r\n          }, delay)\r\n        }\r\n      })",
+          "start": {
+            "line": 458,
+            "column": 6
+          },
+          "end": {
+            "line": 468,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": "300",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        },
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": "An optional payload, such as data to be passed to an event handler.",
+          "code": "delayEmit: NGN.const(function (eventName, delay) {\r\n        if (!this.META.queued.hasOwnProperty(eventName)) {\r\n          let args = NGN.slice(arguments)\r\n          args.splice(1, 1)\r\n\r\n          this.META.queued[eventName] = setTimeout(() => {\r\n            delete this.META.queued[eventName]\r\n            this.emit(...args)\r\n          }, delay)\r\n        }\r\n      })",
+          "start": {
+            "line": 458,
+            "column": 6
+          },
+          "end": {
+            "line": 468,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#delayEmit",
+      "override": false,
+      "private": false
+    },
+    "getInternalCollectionId": {
+      "type": "method",
+      "label": "getInternalCollectionId",
+      "description": "Returns a unique ID for special collections.",
+      "code": "getInternalCollectionId: NGN.privateconst(function (collection) {\r\n        return Symbol(collection)\r\n        // let time = (new Date()).getTime().toString()\r\n        // let rand = Math.random().toString()\r\n        // let key = Object.keys(collection).length + 1\r\n        //\r\n        // while (collection.hasOwnProperty(`${key.toString()}${time}${rand}`)) {\r\n        //   key++\r\n        // }\r\n        //\r\n        // return `${key.toString()}${time}${rand}`\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 477,
+        "column": 6
+      },
+      "end": {
+        "line": 488,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "collection": {
+          "type": "argument",
+          "label": "collection",
+          "description": "The collection to generate an ID for.",
+          "code": "getInternalCollectionId: NGN.privateconst(function (collection) {\r\n        return Symbol(collection)\r\n        // let time = (new Date()).getTime().toString()\r\n        // let rand = Math.random().toString()\r\n        // let key = Object.keys(collection).length + 1\r\n        //\r\n        // while (collection.hasOwnProperty(`${key.toString()}${time}${rand}`)) {\r\n        //   key++\r\n        // }\r\n        //\r\n        // return `${key.toString()}${time}${rand}`\r\n      })",
+          "start": {
+            "line": 477,
+            "column": 6
+          },
+          "end": {
+            "line": 488,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "object",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#getInternalCollectionId",
+      "override": false,
+      "private": true
+    },
+    "handleCollectionTrigger": {
+      "type": "method",
+      "label": "handleCollectionTrigger",
+      "description": "A method to manage #chain event handlers.",
+      "code": "handleCollectionTrigger: NGN.privateconst(function (eventName, key) {\r\n        let me = this\r\n\r\n        return function () {\r\n          // Use setTimeout to simulate nextTick\r\n          setTimeout(() => {\r\n            let cq = me.META.collectionQueue\r\n\r\n            if (cq[key]) {\r\n              cq[key].remainingqueue.delete(eventName)\r\n\r\n              if (cq[key].remainingqueue.size === 0) {\r\n                cq[key].remainingqueue = cq[key].masterqueue\r\n\r\n                if (NGN.isFn(cq[key].eventName)) {\r\n                  cq[key].eventName(cq[key].payload)\r\n                } else {\r\n                  me.emit(cq[key].eventName, cq[key].payload)\r\n                }\r\n              }\r\n            }\r\n          }, 0)\r\n        }\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 495,
+        "column": 6
+      },
+      "end": {
+        "line": 518,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": null,
+          "code": "eventName",
+          "start": {
+            "line": 495,
+            "column": 58
+          },
+          "end": {
+            "line": 495,
+            "column": 67
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": null,
+          "code": "key",
+          "start": {
+            "line": 495,
+            "column": 69
+          },
+          "end": {
+            "line": 495,
+            "column": 72
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#handleCollectionTrigger",
+      "override": false,
+      "private": true
+    },
+    "funnel": {
+      "type": "method",
+      "label": "funnel",
+      "description": "Emit an event after a collection of unique events have all fired.\nThis can be useful in situations where multiple asynchronous actions\nmust complete before another begins. For example, blending 3\nremote data sources from different API's into a single resultset\ncan be achieved with this.\n\n**Example**\n```js\nlet collection = NGN.BUS.funnel\n\nlet allData = []\n\n// When all of the downloads are done, log them.\nNGN.BUS.on('make.results', () => {\nconsole.log(allData)\n})\n\n// Download the first set of data asynchronously\nNGN.NET.json('http:/download1.com/data.json', (data) => {\nallData.push(data)\nNGN.BUS.emit('download1done')\n})\n\n// Download the second set of data asynchronously\nNGN.NET.json('http:/download2.com/data.json', (data) => {\nallData.push(data)\nNGN.BUS.emit('download2done')\n})\n\n// Download the third set of data asynchronously\nNGN.NET.json('http:/download3.com/data.json', (data) => {\nallData.push(data)\nNGN.BUS.emit('download3done')\n})\n\n// The handler can be removed with the special method:\ncollection.remove()\n```",
+      "code": "funnel: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        if (NGN.typeof(eventCollection) !== 'array') {\r\n          throw new Error(`NGN.BUS.funnel expected an array of events, but received a(n) ${NGN.typeof(eventCollection)}`)\r\n        }\r\n\r\n        let collection = new Set(eventCollection)\r\n        let key = this.getInternalCollectionId(this.META.collectionQueue)\r\n\r\n        this.META.collectionQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.collectionQueue[key], {\r\n          masterqueue: NGN.const(new Set(eventCollection)),\r\n          remainingqueue: NGN.private(collection),\r\n          eventName: NGN.const(triggerEventName),\r\n          remove: NGN.const(() => {\r\n            this.META.collectionQueue[key].masterqueue.forEach(event => {\r\n              this.off(event, this.handleCollectionTrigger(event, key))\r\n            })\r\n\r\n            this.decreaseMaxListeners(this.META.collectionQueue[key].masterqueue.size)\r\n\r\n            delete this.META.collectionQueue[key]\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners(collection.size)\r\n\r\n        collection.forEach(event => {\r\n          this.on(event, this.handleCollectionTrigger(event, key))\r\n        })\r\n\r\n        return this.META.collectionQueue[key]\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 581,
+        "column": 6
+      },
+      "end": {
+        "line": 614,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "triggerEventName": {
+          "type": "argument",
+          "label": "payload",
+          "description": "An optional payload delivered to the #triggerEventName.",
+          "code": "triggerEventName",
+          "start": {
+            "line": 581,
+            "column": 25
+          },
+          "end": {
+            "line": 581,
+            "column": 40
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": false,
+          "enum": null
+        },
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": "An optional payload delivered to the #triggerEventName.",
+          "code": "funnel: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        if (NGN.typeof(eventCollection) !== 'array') {\r\n          throw new Error(`NGN.BUS.funnel expected an array of events, but received a(n) ${NGN.typeof(eventCollection)}`)\r\n        }\r\n\r\n        let collection = new Set(eventCollection)\r\n        let key = this.getInternalCollectionId(this.META.collectionQueue)\r\n\r\n        this.META.collectionQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.collectionQueue[key], {\r\n          masterqueue: NGN.const(new Set(eventCollection)),\r\n          remainingqueue: NGN.private(collection),\r\n          eventName: NGN.const(triggerEventName),\r\n          remove: NGN.const(() => {\r\n            this.META.collectionQueue[key].masterqueue.forEach(event => {\r\n              this.off(event, this.handleCollectionTrigger(event, key))\r\n            })\r\n\r\n            this.decreaseMaxListeners(this.META.collectionQueue[key].masterqueue.size)\r\n\r\n            delete this.META.collectionQueue[key]\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners(collection.size)\r\n\r\n        collection.forEach(event => {\r\n          this.on(event, this.handleCollectionTrigger(event, key))\r\n        })\r\n\r\n        return this.META.collectionQueue[key]\r\n      })",
+          "start": {
+            "line": 581,
+            "column": 6
+          },
+          "end": {
+            "line": 614,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": false,
+          "enum": null
+        },
+        "eventCollection": {
+          "type": "argument",
+          "label": "eventCollection",
+          "description": "An array of events. Once _all_ of these events have fired,\nthe triggerEventName will be fired.",
+          "code": "funnel: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        if (NGN.typeof(eventCollection) !== 'array') {\r\n          throw new Error(`NGN.BUS.funnel expected an array of events, but received a(n) ${NGN.typeof(eventCollection)}`)\r\n        }\r\n\r\n        let collection = new Set(eventCollection)\r\n        let key = this.getInternalCollectionId(this.META.collectionQueue)\r\n\r\n        this.META.collectionQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.collectionQueue[key], {\r\n          masterqueue: NGN.const(new Set(eventCollection)),\r\n          remainingqueue: NGN.private(collection),\r\n          eventName: NGN.const(triggerEventName),\r\n          remove: NGN.const(() => {\r\n            this.META.collectionQueue[key].masterqueue.forEach(event => {\r\n              this.off(event, this.handleCollectionTrigger(event, key))\r\n            })\r\n\r\n            this.decreaseMaxListeners(this.META.collectionQueue[key].masterqueue.size)\r\n\r\n            delete this.META.collectionQueue[key]\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners(collection.size)\r\n\r\n        collection.forEach(event => {\r\n          this.on(event, this.handleCollectionTrigger(event, key))\r\n        })\r\n\r\n        return this.META.collectionQueue[key]\r\n      })",
+          "start": {
+            "line": 581,
+            "column": 6
+          },
+          "end": {
+            "line": 614,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "array",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "object",
+      "returnDescription": "collection Provides the key/value configuration of the collection.\n```js\n{\nmasterqueue: ['event1', 'event2', 'etc'], // The original event array \nremainingqueue: [...], // The events the BUS is still waiting for before firing the trigger event.\neventName: 'triggeredEventName', // Name of the event triggered after the remaining elements are flushed.\npayload: 'anything', // OPTIONAL\nremove: [Function]\n}\n```",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#funnel",
+      "override": false,
+      "private": false
+    },
+    "funnelOnce": {
+      "type": "method",
+      "label": "funnelOnce",
+      "description": "This provides the same functionality as #funnel, but\nremoves the listener after the resultant event has fired.\nSee #funnel for detailed usage.",
+      "code": "funnelOnce: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        let funnelClosureEvent = `::NGNFUNNEL::${(new Date()).getTime()}::${triggerEventName}`\r\n        // let funnelClosureEvent = Symbol(triggerEventName)\r\n        let collection = this.funnel(eventCollection, funnelClosureEvent, payload)\r\n\r\n        this.increaseMaxListeners()\r\n        this.once(funnelClosureEvent, () => {\r\n          collection.remove()\r\n          collection = null\r\n          this.emit(triggerEventName, payload)\r\n        })\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 631,
+        "column": 6
+      },
+      "end": {
+        "line": 642,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventCollection": {
+          "type": "argument",
+          "label": "eventCollection",
+          "description": "An array of events. Once _all_ of these events have fired,\nthe triggerEventName will be fired.",
+          "code": "funnelOnce: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        let funnelClosureEvent = `::NGNFUNNEL::${(new Date()).getTime()}::${triggerEventName}`\r\n        // let funnelClosureEvent = Symbol(triggerEventName)\r\n        let collection = this.funnel(eventCollection, funnelClosureEvent, payload)\r\n\r\n        this.increaseMaxListeners()\r\n        this.once(funnelClosureEvent, () => {\r\n          collection.remove()\r\n          collection = null\r\n          this.emit(triggerEventName, payload)\r\n        })\r\n      })",
+          "start": {
+            "line": 631,
+            "column": 6
+          },
+          "end": {
+            "line": 642,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "array",
+          "required": true,
+          "enum": null
+        },
+        "triggerEventName": {
+          "type": "argument",
+          "label": "triggerEventName",
+          "description": "The name of the event triggered after the collection has completed.",
+          "code": "funnelOnce: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        let funnelClosureEvent = `::NGNFUNNEL::${(new Date()).getTime()}::${triggerEventName}`\r\n        // let funnelClosureEvent = Symbol(triggerEventName)\r\n        let collection = this.funnel(eventCollection, funnelClosureEvent, payload)\r\n\r\n        this.increaseMaxListeners()\r\n        this.once(funnelClosureEvent, () => {\r\n          collection.remove()\r\n          collection = null\r\n          this.emit(triggerEventName, payload)\r\n        })\r\n      })",
+          "start": {
+            "line": 631,
+            "column": 6
+          },
+          "end": {
+            "line": 642,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": "An optional payload delivered to the #triggerEventName.",
+          "code": "funnelOnce: NGN.const((eventCollection, triggerEventName, payload = null) => {\r\n        let funnelClosureEvent = `::NGNFUNNEL::${(new Date()).getTime()}::${triggerEventName}`\r\n        // let funnelClosureEvent = Symbol(triggerEventName)\r\n        let collection = this.funnel(eventCollection, funnelClosureEvent, payload)\r\n\r\n        this.increaseMaxListeners()\r\n        this.once(funnelClosureEvent, () => {\r\n          collection.remove()\r\n          collection = null\r\n          this.emit(triggerEventName, payload)\r\n        })\r\n      })",
+          "start": {
+            "line": 631,
+            "column": 6
+          },
+          "end": {
+            "line": 642,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "object",
+      "returnDescription": "collection Provides the key/value configuration of the collection.",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#funnelOnce",
+      "override": false,
+      "private": false
+    },
+    "threshold": {
+      "type": "method",
+      "label": "threshold",
+      "description": "After an event is fired a predetermined number of times ,\ntrigger another event or function.\n\nFor example:\n\n```js\nNGN.BUS.threshold('push.my.button', 3, 'annoyed')\n\nNGN.BUS.on('annoyed', function () {\nconsole.log('We apologize for the slow response, but excessive clicking will not speed up the process.')\n})\n\ndocument.getElementById('#myButton').addEventListener('click', NGN.BUS.attach('push.my.button'))\n```\n\nOnce the threshold is exceeded, the final event will be triggered and\nthe threshold will be reset. Using the example above, this means\nclicking 3 times on `#myButton` would trigger the `annoyed` event ONCE,\n6 times triggers `annoyed` TWICE, 9 times triggers `annoyed` THREE times, etc.",
+      "code": "threshold: NGN.const(function (thresholdEventName, limit, finalEventName, payload = null) {\r\n        if (typeof thresholdEventName !== 'string') {\r\n          throw new Error('The threshold event name must be a string (received ' + (typeof thresholdEventName) + ')')\r\n        }\r\n\r\n        // let key = `${this.getInternalCollectionId(this.META.thresholdQueue)}${limit.toString()}`\r\n        let key = this.getInternalCollectionId(this.META.thresholdQueue)\r\n\r\n        this.META.thresholdQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.thresholdQueue[key], {\r\n          key: NGN.const(key),\r\n          eventName: NGN.const(thresholdEventName),\r\n          limit: NGN.const(limit),\r\n          count: NGN.private(0),\r\n          finalEventName: NGN.const(finalEventName),\r\n          remove: NGN.const(() => {\r\n            let event = this.META.thresholdQueue[key].eventName\r\n\r\n            delete this.META.thresholdQueue[key]\r\n\r\n            this.decreaseMaxListeners()\r\n            this.off(event, this.handleThresholdTrigger(key))\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(thresholdEventName, this.handleThresholdTrigger(key))\r\n\r\n        return this.META.thresholdQueue[key]\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 681,
+        "column": 6
+      },
+      "end": {
+        "line": 712,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "thresholdEventName": {
+          "type": "argument",
+          "label": "thresholdEventName",
+          "description": "The name of the event to count.",
+          "code": "threshold: NGN.const(function (thresholdEventName, limit, finalEventName, payload = null) {\r\n        if (typeof thresholdEventName !== 'string') {\r\n          throw new Error('The threshold event name must be a string (received ' + (typeof thresholdEventName) + ')')\r\n        }\r\n\r\n        // let key = `${this.getInternalCollectionId(this.META.thresholdQueue)}${limit.toString()}`\r\n        let key = this.getInternalCollectionId(this.META.thresholdQueue)\r\n\r\n        this.META.thresholdQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.thresholdQueue[key], {\r\n          key: NGN.const(key),\r\n          eventName: NGN.const(thresholdEventName),\r\n          limit: NGN.const(limit),\r\n          count: NGN.private(0),\r\n          finalEventName: NGN.const(finalEventName),\r\n          remove: NGN.const(() => {\r\n            let event = this.META.thresholdQueue[key].eventName\r\n\r\n            delete this.META.thresholdQueue[key]\r\n\r\n            this.decreaseMaxListeners()\r\n            this.off(event, this.handleThresholdTrigger(key))\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(thresholdEventName, this.handleThresholdTrigger(key))\r\n\r\n        return this.META.thresholdQueue[key]\r\n      })",
+          "start": {
+            "line": 681,
+            "column": 6
+          },
+          "end": {
+            "line": 712,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "finalEventName": {
+          "type": "argument",
+          "label": "payload",
+          "description": "An optional payload to send to the finalEvent handler.",
+          "code": "finalEventName",
+          "start": {
+            "line": 681,
+            "column": 57
+          },
+          "end": {
+            "line": 681,
+            "column": 62
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": false,
+          "enum": [
+            "s"
+          ]
+        },
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": "An optional payload to send to the finalEvent handler.",
+          "code": "threshold: NGN.const(function (thresholdEventName, limit, finalEventName, payload = null) {\r\n        if (typeof thresholdEventName !== 'string') {\r\n          throw new Error('The threshold event name must be a string (received ' + (typeof thresholdEventName) + ')')\r\n        }\r\n\r\n        // let key = `${this.getInternalCollectionId(this.META.thresholdQueue)}${limit.toString()}`\r\n        let key = this.getInternalCollectionId(this.META.thresholdQueue)\r\n\r\n        this.META.thresholdQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.thresholdQueue[key], {\r\n          key: NGN.const(key),\r\n          eventName: NGN.const(thresholdEventName),\r\n          limit: NGN.const(limit),\r\n          count: NGN.private(0),\r\n          finalEventName: NGN.const(finalEventName),\r\n          remove: NGN.const(() => {\r\n            let event = this.META.thresholdQueue[key].eventName\r\n\r\n            delete this.META.thresholdQueue[key]\r\n\r\n            this.decreaseMaxListeners()\r\n            this.off(event, this.handleThresholdTrigger(key))\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(thresholdEventName, this.handleThresholdTrigger(key))\r\n\r\n        return this.META.thresholdQueue[key]\r\n      })",
+          "start": {
+            "line": 681,
+            "column": 6
+          },
+          "end": {
+            "line": 712,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": false,
+          "enum": [
+            "s"
+          ]
+        },
+        "limit": {
+          "type": "argument",
+          "label": "limit",
+          "description": "The number of occurrances allowed until the final event is triggered.\nThe event will be triggered at the threshold. For example, if the limit\nis `3`, the finalEvent will be triggered the 3rd time thresholdEventName is\nfired.",
+          "code": "threshold: NGN.const(function (thresholdEventName, limit, finalEventName, payload = null) {\r\n        if (typeof thresholdEventName !== 'string') {\r\n          throw new Error('The threshold event name must be a string (received ' + (typeof thresholdEventName) + ')')\r\n        }\r\n\r\n        // let key = `${this.getInternalCollectionId(this.META.thresholdQueue)}${limit.toString()}`\r\n        let key = this.getInternalCollectionId(this.META.thresholdQueue)\r\n\r\n        this.META.thresholdQueue[key] = {}\r\n\r\n        Object.defineProperties(this.META.thresholdQueue[key], {\r\n          key: NGN.const(key),\r\n          eventName: NGN.const(thresholdEventName),\r\n          limit: NGN.const(limit),\r\n          count: NGN.private(0),\r\n          finalEventName: NGN.const(finalEventName),\r\n          remove: NGN.const(() => {\r\n            let event = this.META.thresholdQueue[key].eventName\r\n\r\n            delete this.META.thresholdQueue[key]\r\n\r\n            this.decreaseMaxListeners()\r\n            this.off(event, this.handleThresholdTrigger(key))\r\n          }),\r\n          payload: NGN.const(payload)\r\n        })\r\n\r\n        this.increaseMaxListeners()\r\n        this.on(thresholdEventName, this.handleThresholdTrigger(key))\r\n\r\n        return this.META.thresholdQueue[key]\r\n      })",
+          "start": {
+            "line": 681,
+            "column": 6
+          },
+          "end": {
+            "line": 712,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "object",
+      "returnDescription": "null Returns an object that can be used to remove the threshold.",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#threshold",
+      "override": false,
+      "private": false
+    },
+    "handleThresholdTrigger": {
+      "type": "method",
+      "label": "handleThresholdTrigger",
+      "description": "A method to manage #threshold event handlers.",
+      "code": "handleThresholdTrigger: NGN.const(function (key) {\r\n        let me = this\r\n        return function () {\r\n          // Use setTimeout to simulate nextTick\r\n          setTimeout(() => {\r\n            if (me.META.thresholdQueue.hasOwnProperty(key)) {\r\n              me.META.thresholdQueue[key].count++\r\n              if (me.META.thresholdQueue[key].count === me.META.thresholdQueue[key].limit) {\r\n                if (NGN.isFn(me.META.thresholdQueue[key].finalEventName)) {\r\n                  me.META.thresholdQueue[key].finalEventName(me.META.thresholdQueue[key].payload)\r\n                } else {\r\n                  me.emit(me.META.thresholdQueue[key].finalEventName, me.META.thresholdQueue[key].payload)\r\n                }\r\n\r\n                // This if statement is required in case the event is removed\r\n                // during the reset process.\r\n                if (me.META.thresholdQueue.hasOwnProperty(key)) {\r\n                  me.META.thresholdQueue[key].count = 0\r\n                }\r\n              }\r\n            }\r\n          }, 0)\r\n        }\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 730,
+        "column": 6
+      },
+      "end": {
+        "line": 753,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": null,
+          "code": "key",
+          "start": {
+            "line": 730,
+            "column": 50
+          },
+          "end": {
+            "line": 730,
+            "column": 53
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "The name of the event being scoped.",
+          "code": "applyScope: NGN.privateconst((args) => {\r\n        if (NGN.nodelike && args.length > 1) {\r\n          if (args[args.length - 1].listener) {\r\n            args[args.length - 1].listener = this.wrapEventHandlerWithScope(\r\n              args[0],\r\n              args[args.length - 1].listener\r\n            )\r\n          } else {\r\n            args[args.length - 1] = this.wrapEventHandlerWithScope(\r\n              args[0],\r\n              args[args.length - 1]\r\n            )\r\n          }\r\n        }\r\n      })",
+          "start": {
+            "line": 791,
+            "column": 6
+          },
+          "end": {
+            "line": 805,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "handlerFn": {
+          "type": "method",
+          "label": "handlerFn",
+          "description": "The handler function.",
+          "code": "@param {function} handlerFn\nThe handler function.",
+          "start": {
+            "line": 763,
+            "column": 6
+          },
+          "end": {
+            "line": 781,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": "NGN.EventEmitter#handleThresholdTrigger",
+      "override": false,
+      "private": false
+    },
+    "clear": {
+      "type": "method",
+      "label": "clear",
+      "description": "Remove all event handlers from the EventEmitter (both regular and adhoc).\r\n  This is a shortcut for #removeAllListeners.",
+      "code": "clear () {\r\n    let events = NGN.slice(arguments)\r\n\r\n    if (events.length === 0) {\r\n      this.META.wildcardEvents.clear()\r\n\r\n      let symbolEvents = []\r\n\r\n      if (NGN.nodelike) {\r\n        symbolEvents = Object.getOwnPropertySymbols(this._events)\r\n      } else {\r\n        symbolEvents = Object.getOwnPropertySymbols(this.adhoc)\r\n        symbolEvents = symbolEvents.concat(Object.getOwnPropertySymbols(this.handlers))\r\n      }\r\n\r\n      for (let i = 0; i < symbolEvents.length; i++) {\r\n        this.removeAllListeners(symbolEvents[i])\r\n      }\r\n\r\n      return this.removeAllListeners()\r\n    }\r\n\r\n    for (let i = 0; i < events.length; i++) {\r\n      this.META.wildcardEvents.delete(events[i])\r\n      this.removeAllListeners(events[i])\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 813,
+        "column": 2
+      },
+      "end": {
+        "line": 839,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": "NGN.EventEmitter#clear",
+      "override": false,
+      "private": false
+    },
+    "eventHandler": {
+      "type": "method",
+      "label": "eventHandler",
+      "description": "Internal method used to handle TTL and wildcard management.",
+      "code": "eventHandler (eventName, callback, ttl, prepend = false) {\r\n    if (NGN.typeof(ttl) === 'boolean') {\r\n      prepend = ttl\r\n      ttl = this.META.defaultTTL\r\n    }\r\n\r\n    if (ttl === undefined) {\r\n      ttl = this.META.defaultTTL\r\n    }\r\n\r\n    if (ttl > 0) {\r\n      setTimeout(() => this.off(eventName, callback), ttl)\r\n    }\r\n\r\n    if (typeof eventName === 'string' && eventName.indexOf('*') >= 0) {\r\n      this.META.wildcardEvents.add(eventName)\r\n    }\r\n\r\n    return prepend\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 845,
+        "column": 2
+      },
+      "end": {
+        "line": 864,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": null,
+          "code": "eventName",
+          "start": {
+            "line": 845,
+            "column": 16
+          },
+          "end": {
+            "line": 845,
+            "column": 25
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "argument",
+          "label": "callback",
+          "description": null,
+          "code": "callback",
+          "start": {
+            "line": 845,
+            "column": 27
+          },
+          "end": {
+            "line": 845,
+            "column": 35
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "ttl": {
+          "type": "argument",
+          "label": "ttl",
+          "description": null,
+          "code": "ttl",
+          "start": {
+            "line": 845,
+            "column": 37
+          },
+          "end": {
+            "line": 845,
+            "column": 40
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "prepend": {
+          "type": "argument",
+          "label": "prepend",
+          "description": null,
+          "code": "prepend = false",
+          "start": {
+            "line": 845,
+            "column": 42
+          },
+          "end": {
+            "line": 845,
+            "column": 57
+          },
+          "flags": [],
+          "authors": [],
+          "default": false,
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": "NGN.EventEmitter#eventHandler",
+      "override": false,
+      "private": true
+    },
+    "on": {
+      "type": "method",
+      "label": "on",
+      "description": "Create a new event handler for the specified event.",
+      "code": "on (eventName, callback, ttl, prepend = false) {\r\n    if (NGN.typeof(eventName) === 'array') {\r\n      for (let i = 0; i < eventName.length; i++) {\r\n        this.on(eventName[i], callback, ttl, prepend)\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    if (this.eventHandler(...arguments)) {\r\n      this.prependListener(eventName, callback)\r\n    } else {\r\n      this.addListener(eventName, callback)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 884,
+        "column": 2
+      },
+      "end": {
+        "line": 898,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "Name of the event to listen for.\nIf an object is passed, this method will automatically setup a #pool.",
+          "code": "eventName",
+          "start": {
+            "line": 884,
+            "column": 6
+          },
+          "end": {
+            "line": 884,
+            "column": 15
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|string[]|object",
+          "required": true,
+          "enum": null
+        },
+        "handler": {
+          "type": "method",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.\nThis is ignored if eventName is an object.",
+          "code": "@param {function} handler\nThe method responsible for responding to the event.\nThis is ignored if eventName is an object.",
+          "start": {
+            "line": 884,
+            "column": 2
+          },
+          "end": {
+            "line": 898,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        },
+        "ttl": {
+          "type": "argument",
+          "label": "TTL",
+          "description": "Time-To-Live is the number of milliseconds before the event handler\nis automatically removed. This is useful for automatically cleaning\nup limited-life event handlers.",
+          "code": "ttl",
+          "start": {
+            "line": 884,
+            "column": 27
+          },
+          "end": {
+            "line": 884,
+            "column": 30
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        },
+        "prepend": {
+          "type": "argument",
+          "label": "prepend",
+          "description": "When set to `true`, the event is added to the beginning of\nthe processing list instead of the end.\nThis is ignored if eventName is an object.",
+          "code": "prepend = false",
+          "start": {
+            "line": 884,
+            "column": 32
+          },
+          "end": {
+            "line": 884,
+            "column": 47
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "TTL": {
+          "type": "argument",
+          "label": "TTL",
+          "description": "Time-To-Live is the number of milliseconds before the event handler\nis automatically removed. This is useful for automatically cleaning\nup limited-life event handlers.",
+          "code": "ttl",
+          "start": {
+            "line": 884,
+            "column": 27
+          },
+          "end": {
+            "line": 884,
+            "column": 30
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": "NGN.EventEmitter#on",
+      "override": false,
+      "private": false
+    },
+    "once": {
+      "type": "method",
+      "label": "once",
+      "description": "Create a new event handler for the specified event. The\nhandler will be removed immediately after it is executed. This\neffectively listens for an event to happen once and only once\nbefore the handler is destroyed.",
+      "code": "once (eventName, callback, ttl, prepend = false) {\r\n    if (NGN.typeof(eventName) === 'array') {\r\n      for (let i = 0; i < eventName.length; i++) {\r\n        this.once(eventName[i], callback, ttl, prepend)\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    if (this.eventHandler(...arguments)) {\r\n      this.prependOnceListener(eventName, callback)\r\n    } else {\r\n      super.once(eventName, this.wrapEventHandlerWithScope(eventName, callback))\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 914,
+        "column": 2
+      },
+      "end": {
+        "line": 928,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "Name of the event to listen for.",
+          "code": "eventName",
+          "start": {
+            "line": 914,
+            "column": 8
+          },
+          "end": {
+            "line": 914,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "argument",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.",
+          "code": "callback",
+          "start": {
+            "line": 914,
+            "column": 19
+          },
+          "end": {
+            "line": 914,
+            "column": 27
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function",
+          "required": true,
+          "enum": null
+        },
+        "ttl": {
+          "type": "argument",
+          "label": "prepend",
+          "description": "When set to `true`, the event is added to the beginning of\nthe processing list instead of the end.",
+          "code": "ttl",
+          "start": {
+            "line": 914,
+            "column": 29
+          },
+          "end": {
+            "line": 914,
+            "column": 32
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "prepend": {
+          "type": "argument",
+          "label": "prepend",
+          "description": "When set to `true`, the event is added to the beginning of\nthe processing list instead of the end.",
+          "code": "ttl",
+          "start": {
+            "line": 914,
+            "column": 29
+          },
+          "end": {
+            "line": 914,
+            "column": 32
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "handler": {
+          "type": "argument",
+          "label": "handler",
+          "description": "The method responsible for responding to the event.",
+          "code": "callback",
+          "start": {
+            "line": 914,
+            "column": 19
+          },
+          "end": {
+            "line": 914,
+            "column": 27
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": "NGN.EventEmitter#once",
+      "override": false,
+      "private": false
+    },
+    "prependListener": {
+      "type": "method",
+      "label": "prependListener",
+      "description": null,
+      "code": "prependListener () {\r\n    this.applyScope(arguments)\r\n    super.prependListener(...arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 931,
+        "column": 2
+      },
+      "end": {
+        "line": 934,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": "NGN.EventEmitter#prependListener",
+      "override": false,
+      "private": false
+    },
+    "prependOnceListener": {
+      "type": "method",
+      "label": "prependOnceListener",
+      "description": null,
+      "code": "prependOnceListener () {\r\n    this.applyScope(arguments)\r\n    super.prependOnceListener(...arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 936,
+        "column": 2
+      },
+      "end": {
+        "line": 939,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": "NGN.EventEmitter#prependOnceListener",
+      "override": false,
+      "private": false
+    },
+    "addListener": {
+      "type": "method",
+      "label": "addListener",
+      "description": null,
+      "code": "addListener () {\r\n    this.applyScope(arguments)\r\n    super.addListener(...arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 941,
+        "column": 2
+      },
+      "end": {
+        "line": 944,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": "NGN.EventEmitter#addListener",
+      "override": false,
+      "private": false
+    },
+    "removeListener": {
+      "type": "method",
+      "label": "removeListener",
+      "description": null,
+      "code": "removeListener () {\r\n    if (arguments[arguments.length - 1] !== true) {\r\n      this.applyScope(arguments)\r\n    }\r\n\r\n    super.removeListener(...arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 946,
+        "column": 2
+      },
+      "end": {
+        "line": 952,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": "NGN.EventEmitter#removeListener",
+      "override": false,
+      "private": false
+    },
+    "emit": {
+      "type": "method",
+      "label": "emit",
+      "description": "Emits an event.",
+      "code": "emit () {\r\n    if (NGN.typeof(arguments[0]) === 'array') {\r\n      let args = NGN.slice(arguments)\r\n      let eventNames = args.shift()\r\n\r\n      for (let i = 0; i < eventNames.length; i++) {\r\n        this.emit(eventNames[i], ...args)\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    // This catches non-string event names. NGN internally uses Symbols\r\n    // for the NGN.WARN/INFO/ERROR event names to prevent name collisions.\r\n    // This check provides support for these special events. These types\r\n    // of events will never have wildcards.\r\n    if (!NGN.nodelike || !arguments[0] || this.META.wildcardEvents.size === 0) {\r\n      super.emit(...arguments)\r\n      return\r\n    }\r\n\r\n    if (NGN.nodelike && typeof arguments[0] === 'symbol') {\r\n      super.emit(...arguments)\r\n      return\r\n    }\r\n\r\n    /**\r\n     * The NGN browser-based event emitter supports wildcards natively, but\r\n     * Node.js does not. This adds simple wildcard support for Node. The\r\n     * only wildcard character supported at this time is `*`. This feature\r\n     * will check the event name for the existance of a wildcard. If a\r\n     * wilcard character is present, the internally-maintained list of\r\n     * wildcard events is checked to see if it's a known event. If none\r\n     * of these checks pass, the standard event emitter is used, otherwise\r\n     * special wildcard handling is used.\r\n     */\r\n    let iterator = this.META.wildcardEvents.values()\r\n    let currentEvent = null\r\n    let args = NGN.slice(arguments)\r\n\r\n    args.shift()\r\n\r\n    while (currentEvent === null || !currentEvent.done) {\r\n      if (currentEvent !== null && currentEvent.value !== arguments[0]) {\r\n        let pattern = new RegExp(currentEvent.value.replace(/\\./g, '\\\\.').replace(/\\*/g, '.*'), 'g')\r\n\r\n        if (pattern.test(arguments[0])) {\r\n          super.emit(currentEvent.value, ...args, typeof arguments[0] !== 'symbol' ? Symbol(arguments[0]) : arguments[0])\r\n          break\r\n        }\r\n      }\r\n\r\n      currentEvent = iterator.next()\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 964,
+        "column": 2
+      },
+      "end": {
+        "line": 1018,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "eventName": {
+          "type": "argument",
+          "label": "eventName",
+          "description": "The event name can be a string or an array of strings. If an array\nof strings is specified, an event will be fired for each event name\nwithin the array.",
+          "code": "emit () {\r\n    if (NGN.typeof(arguments[0]) === 'array') {\r\n      let args = NGN.slice(arguments)\r\n      let eventNames = args.shift()\r\n\r\n      for (let i = 0; i < eventNames.length; i++) {\r\n        this.emit(eventNames[i], ...args)\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    // This catches non-string event names. NGN internally uses Symbols\r\n    // for the NGN.WARN/INFO/ERROR event names to prevent name collisions.\r\n    // This check provides support for these special events. These types\r\n    // of events will never have wildcards.\r\n    if (!NGN.nodelike || !arguments[0] || this.META.wildcardEvents.size === 0) {\r\n      super.emit(...arguments)\r\n      return\r\n    }\r\n\r\n    if (NGN.nodelike && typeof arguments[0] === 'symbol') {\r\n      super.emit(...arguments)\r\n      return\r\n    }\r\n\r\n    /**\r\n     * The NGN browser-based event emitter supports wildcards natively, but\r\n     * Node.js does not. This adds simple wildcard support for Node. The\r\n     * only wildcard character supported at this time is `*`. This feature\r\n     * will check the event name for the existance of a wildcard. If a\r\n     * wilcard character is present, the internally-maintained list of\r\n     * wildcard events is checked to see if it's a known event. If none\r\n     * of these checks pass, the standard event emitter is used, otherwise\r\n     * special wildcard handling is used.\r\n     */\r\n    let iterator = this.META.wildcardEvents.values()\r\n    let currentEvent = null\r\n    let args = NGN.slice(arguments)\r\n\r\n    args.shift()\r\n\r\n    while (currentEvent === null || !currentEvent.done) {\r\n      if (currentEvent !== null && currentEvent.value !== arguments[0]) {\r\n        let pattern = new RegExp(currentEvent.value.replace(/\\./g, '\\\\.').replace(/\\*/g, '.*'), 'g')\r\n\r\n        if (pattern.test(arguments[0])) {\r\n          super.emit(currentEvent.value, ...args, typeof arguments[0] !== 'symbol' ? Symbol(arguments[0]) : arguments[0])\r\n          break\r\n        }\r\n      }\r\n\r\n      currentEvent = iterator.next()\r\n    }\r\n  }",
+          "start": {
+            "line": 964,
+            "column": 2
+          },
+          "end": {
+            "line": 1018,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string[]",
+          "required": true,
+          "enum": null
+        },
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": "An optional payload. This can be any number of additional arguments.",
+          "code": "emit () {\r\n    if (NGN.typeof(arguments[0]) === 'array') {\r\n      let args = NGN.slice(arguments)\r\n      let eventNames = args.shift()\r\n\r\n      for (let i = 0; i < eventNames.length; i++) {\r\n        this.emit(eventNames[i], ...args)\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    // This catches non-string event names. NGN internally uses Symbols\r\n    // for the NGN.WARN/INFO/ERROR event names to prevent name collisions.\r\n    // This check provides support for these special events. These types\r\n    // of events will never have wildcards.\r\n    if (!NGN.nodelike || !arguments[0] || this.META.wildcardEvents.size === 0) {\r\n      super.emit(...arguments)\r\n      return\r\n    }\r\n\r\n    if (NGN.nodelike && typeof arguments[0] === 'symbol') {\r\n      super.emit(...arguments)\r\n      return\r\n    }\r\n\r\n    /**\r\n     * The NGN browser-based event emitter supports wildcards natively, but\r\n     * Node.js does not. This adds simple wildcard support for Node. The\r\n     * only wildcard character supported at this time is `*`. This feature\r\n     * will check the event name for the existance of a wildcard. If a\r\n     * wilcard character is present, the internally-maintained list of\r\n     * wildcard events is checked to see if it's a known event. If none\r\n     * of these checks pass, the standard event emitter is used, otherwise\r\n     * special wildcard handling is used.\r\n     */\r\n    let iterator = this.META.wildcardEvents.values()\r\n    let currentEvent = null\r\n    let args = NGN.slice(arguments)\r\n\r\n    args.shift()\r\n\r\n    while (currentEvent === null || !currentEvent.done) {\r\n      if (currentEvent !== null && currentEvent.value !== arguments[0]) {\r\n        let pattern = new RegExp(currentEvent.value.replace(/\\./g, '\\\\.').replace(/\\*/g, '.*'), 'g')\r\n\r\n        if (pattern.test(arguments[0])) {\r\n          super.emit(currentEvent.value, ...args, typeof arguments[0] !== 'symbol' ? Symbol(arguments[0]) : arguments[0])\r\n          break\r\n        }\r\n      }\r\n\r\n      currentEvent = iterator.next()\r\n    }\r\n  }",
+          "start": {
+            "line": 964,
+            "column": 2
+          },
+          "end": {
+            "line": 1018,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": "NGN.EventEmitter#emit",
+      "override": false,
+      "private": false
+    }
+  }
+}

@@ -1,0 +1,936 @@
+{
+  "type": "class",
+  "label": "NGN.DATA.Index",
+  "description": "Data indexes are a data structure that improves the speed\nof data retrieval from an NGN.DATA.Store, at the cost of\nadditional memory usage. Even though memory usage is increased\nfor each index applied to a store, it tends to be a very small\nfraction of the memory required for storing data.\n\nIndexes help locate data within a store without having to read\nevery record. They will, in the overwhelming majority of cases,\nspeed up queries. However; if overused or misused, they may\nmarginally _increase_ query processing time.\n\nNGN data indexes were designed to be used the same way relational\ndata indexes and graph data vertices are used.",
+  "code": "class NGNDataIndex extends EventEmitter { // eslint-disable-line\r\n  /**\r\n   * Create a new data index.\r\n   * @param {Boolean} [BTree=false]\r\n   * Use a B-Tree index. This is only available for numeric values and dates.\r\n   * @param {String} [name='Untitled Index']\r\n   * Optional name for index. This is useful for debugging when multiple\r\n   * indexes exist.\r\n   */\r\n  constructor (btree = false, name = 'Untitled Index') {\r\n    super()\r\n\r\n    Object.defineProperties(this, {\r\n      // Private constants\r\n      CREATE_EVENT: NGN.privateconst(Symbol('create')),\r\n      REMOVE_EVENT: NGN.privateconst(Symbol('delete')),\r\n      UPDATE_EVENT: NGN.privateconst(Symbol('update')),\r\n\r\n      // Private data attributes\r\n      uniqueValues: NGN.privateconst(new Set()),\r\n      knownRecords: NGN.privateconst([]), // Linked list of Sets\r\n      name: NGN.const(name),\r\n      isBTree: NGN.privateconst(btree)\r\n    })\r\n\r\n    // Bubble up private events when applicable\r\n    const me = this\r\n    this.on([\r\n      this.CREATE_EVENT,\r\n      this.REMOVE_EVENT,\r\n      this.UPDATE_EVENT\r\n    ], function (oid, value, suppressEvent = false) {\r\n      if (!suppressEvent) {\r\n        me.emit(this.event.toString().replace(/^Symbol\\(|\\)$/g, ''), oid)\r\n      }\r\n    })\r\n\r\n    // When all known records for a given value are removed,\r\n    // clear the unique value index.\r\n    this.on(this.REMOVE_EVENT, (oid, value) => {\r\n      if (this.recordsFor(value).length === 0) {\r\n        let index = this.indexOf(value)\r\n\r\n        if (index >= 0) {\r\n          this.knownRecords.splice(index, 1)\r\n          this.uniqueValues.delete(value)\r\n        }\r\n      }\r\n    })\r\n\r\n    // Support BTree Indexing\r\n    if (this.isBTree) {\r\n      Object.defineProperty(this, 'BTREE', NGN.privateconst(new NGN.DATA.BTree(2, name)))\r\n    }\r\n  }\r\n\r\n  get keys () {\r\n    if (this.uniqueValues.size === 0) {\r\n      return []\r\n    }\r\n\r\n    return Array.from(this.uniqueValues.values())\r\n  }\r\n\r\n  /**\r\n   * Add a field/value to the index.\r\n   * @param {any} value\r\n   * The value of the model/record indexed field.\r\n   * @param {Symbol} oid\r\n   * The record's object ID (NGN.DATA.Model#OID)\r\n   */\r\n  add (value, oid, suppressEvent = false) {\r\n    let valueIndex = -1\r\n\r\n    // Create or identify the index of the unique value\r\n    if (!this.uniqueValues.has(value)) {\r\n      this.uniqueValues.add(value)\r\n      this.knownRecords.push(new Set())\r\n      valueIndex += this.uniqueValues.size\r\n    } else {\r\n      valueIndex = this.indexOf(value)\r\n    }\r\n\r\n    this.knownRecords[valueIndex].add(oid)\r\n\r\n    // Add BTree indexing\r\n    if (this.isBTree) {\r\n      let btreeValue = value instanceof Date ? value.getTime() : value\r\n\r\n      if (this.BTREE.get(btreeValue) === undefined) {\r\n        this.BTREE.put(btreeValue, valueIndex)\r\n      }\r\n    }\r\n\r\n    this.emit(this.CREATE_EVENT, oid, value, suppressEvent)\r\n  }\r\n\r\n  /**\r\n   * Remove a record from the index.\r\n   * @param  {Symbol} oid\r\n   * The record's object ID (NGN.DATA.Model#OID)\r\n   * @param  {any} [value=undefined]\r\n   * When specified, the field value will be used to identify\r\n   * the index value. Specifying this value will make the remove\r\n   * operation faster (uses introspection).\r\n   */\r\n  remove (oid, value, suppressEvent = false) {\r\n    // If a value is specified, attempt to lookup the OID by value.\r\n    if (value !== undefined) {\r\n      let index = this.recordsOf(value)\r\n\r\n      // If a value index is found, remove the OID\r\n      if (index) {\r\n        if (index.delete(oid)) { // Returns false if nothing is actually deleted.\r\n          if (this.isBTree && (!index || index.size === 0)) {\r\n            this.BTREE.delete(value instanceof Date ? value.getTime() : value)\r\n          }\r\n\r\n          this.emit(this.REMOVE_EVENT, oid, value, suppressEvent)\r\n\r\n          return\r\n        }\r\n      }\r\n\r\n      NGN.WARN(`Index value \"${value}\" not found in index.`)\r\n    }\r\n\r\n    // Iterate through all index values to remove the OID (slow)\r\n    let removed = false\r\n    for (let i = 0; i < this.knownRecords.length; i++) {\r\n      if (this.knownRecords[i].delete(oid) && !removed) {\r\n        removed = true\r\n        value = Array.from(this.uniqueValues.values())[i]\r\n\r\n        if (this.isBTree) {\r\n          this.BTREE.delete(value instanceof Date ? value.getTime() : value)\r\n        }\r\n\r\n        break\r\n      }\r\n    }\r\n\r\n    if (removed) {\r\n      this.emit(this.REMOVE_EVENT, oid, value, suppressEvent)\r\n    }\r\n  }\r\n\r\n  /**\r\n   * Update an index to reflect an updated value.\r\n   * @param  {[type]} oid      [description]\r\n   * @param  {[type]} oldvalue [description]\r\n   * @param  {[type]} newvalue [description]\r\n   * @return {[type]}          [description]\r\n   */\r\n  update (oid, oldValue, newValue, suppressEvent = false) {\r\n    if (oldValue !== newValue) {\r\n      this.remove(oid, oldValue, true)\r\n      this.add(newValue, oid, true)\r\n      this.emit(this.UPDATE_EVENT, oid, null, suppressEvent)\r\n    }\r\n  }\r\n\r\n  /**\r\n   * Forcibly reset the index (clears everything).\r\n   */\r\n  reset () {\r\n    this.uniqueValues.clear()\r\n    this.knownRecords.splice(0)\r\n\r\n    if (this.isBTree) {\r\n      this.BTREE.reset()\r\n    }\r\n\r\n    this.emit('reset')\r\n  }\r\n\r\n  /**\r\n   * Retrieve the index number of known records for the\r\n   * specified value.\r\n   * @private\r\n   * @param  {any} value\r\n   * The unique value for which records are known.\r\n   * @return {[numeric]}\r\n   * The 0-based index of known records. Returns `-1` if no\r\n   * index exists.\r\n   */\r\n  indexOf (value) {\r\n    return Array.from(this.uniqueValues.keys()).indexOf(value)\r\n  }\r\n\r\n  /**\r\n   * The records of a particular value.\r\n   * @private\r\n   * @param  {any} value\r\n   * The index field value to use as a lookup.\r\n   * @return {Set}\r\n   * An set of object ID's or `null` if none exist.\r\n   */\r\n  recordsOf (value) {\r\n    let valueIndex = this.indexOf(value)\r\n\r\n    return valueIndex < 0 ? null : this.knownRecords[valueIndex]\r\n  }\r\n\r\n  /**\r\n   * Get the list of records for the given value.\r\n   * @param  {any} value\r\n   * The value of the index to lookup.\r\n   * @return {array}\r\n   * The array contains OID reference values (records).\r\n   */\r\n  recordsFor (value) {\r\n    let index = this.recordsOf(value)\r\n\r\n    if (index === null || index.size === 0) {\r\n      return []\r\n    }\r\n\r\n    return Array.from(index.values())\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {
+    "create": {
+      "type": "event",
+      "label": "create",
+      "description": "{Symbol}\nTriggered when a new record is indexed. The payload \nrepresents the NGN.DATA.Model#oid.",
+      "code": "@fires create {Symbol}\nTriggered when a new record is indexed. The payload (Symbol)\nrepresents the NGN.DATA.Model#oid.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "delete": {
+      "type": "event",
+      "label": "delete",
+      "description": "{Symbol}\nTriggered when a record is de-indexed. The payload \nrepresents the NGN.DATA.Model#oid.",
+      "code": "@fires delete {Symbol}\nTriggered when a record is de-indexed. The payload (Symbol)\nrepresents the NGN.DATA.Model#oid.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "update": {
+      "type": "event",
+      "label": "update",
+      "description": "{Symbol}\nTriggered when a record is re-indexed \nrepresents the NGN.DATA.Model#oid.",
+      "code": "@fires update {Symbol}\nTriggered when a record is re-indexed (updated). The payload (Symbol)\nrepresents the NGN.DATA.Model#oid.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "reset": {
+      "type": "event",
+      "label": "reset",
+      "description": null,
+      "code": "this.emit('reset')",
+      "start": {
+        "line": 204,
+        "column": 4
+      },
+      "end": {
+        "line": 204,
+        "column": 22
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {},
+      "deprecated": false,
+      "deprecationReplacement": null
+    }
+  },
+  "start": {
+    "line": 31,
+    "column": 15
+  },
+  "end": {
+    "line": 251,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/index/Index.js",
+  "extends": "EventEmitter",
+  "configuration": {},
+  "properties": {
+    "CREATE_EVENT": {
+      "type": "property",
+      "label": "CREATE_EVENT",
+      "description": null,
+      "code": "CREATE_EVENT: NGN.privateconst(Symbol('create'))",
+      "start": {
+        "line": 45,
+        "column": 6
+      },
+      "end": {
+        "line": 45,
+        "column": 54
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "REMOVE_EVENT": {
+      "type": "property",
+      "label": "REMOVE_EVENT",
+      "description": null,
+      "code": "REMOVE_EVENT: NGN.privateconst(Symbol('delete'))",
+      "start": {
+        "line": 46,
+        "column": 6
+      },
+      "end": {
+        "line": 46,
+        "column": 54
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "UPDATE_EVENT": {
+      "type": "property",
+      "label": "UPDATE_EVENT",
+      "description": null,
+      "code": "UPDATE_EVENT: NGN.privateconst(Symbol('update'))",
+      "start": {
+        "line": 47,
+        "column": 6
+      },
+      "end": {
+        "line": 47,
+        "column": 54
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "uniqueValues": {
+      "type": "property",
+      "label": "uniqueValues",
+      "description": null,
+      "code": "uniqueValues: NGN.privateconst(new Set())",
+      "start": {
+        "line": 50,
+        "column": 6
+      },
+      "end": {
+        "line": 50,
+        "column": 47
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "knownRecords": {
+      "type": "property",
+      "label": "knownRecords",
+      "description": null,
+      "code": "knownRecords: NGN.privateconst([])",
+      "start": {
+        "line": 51,
+        "column": 6
+      },
+      "end": {
+        "line": 51,
+        "column": 40
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "name": {
+      "type": "property",
+      "label": "name",
+      "description": null,
+      "code": "name: NGN.const(name)",
+      "start": {
+        "line": 52,
+        "column": 6
+      },
+      "end": {
+        "line": 52,
+        "column": 27
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "isBTree": {
+      "type": "property",
+      "label": "isBTree",
+      "description": null,
+      "code": "isBTree: NGN.privateconst(btree)",
+      "start": {
+        "line": 53,
+        "column": 6
+      },
+      "end": {
+        "line": 53,
+        "column": 38
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "keys": {
+      "type": "property",
+      "label": "keys",
+      "description": null,
+      "code": "get keys () {\r\n    if (this.uniqueValues.size === 0) {\r\n      return []\r\n    }\r\n\r\n    return Array.from(this.uniqueValues.values())\r\n  }",
+      "start": {
+        "line": 87,
+        "column": 2
+      },
+      "end": {
+        "line": 93,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": "Create a new data index.\r\n  \r\n  Use a B-Tree index. This is only available for numeric values and dates.\r\n  \r\n  Optional name for index. This is useful for debugging when multiple\r\n  indexes exist.",
+      "code": "constructor (btree = false, name = 'Untitled Index') {\r\n    super()\r\n\r\n    Object.defineProperties(this, {\r\n      // Private constants\r\n      CREATE_EVENT: NGN.privateconst(Symbol('create')),\r\n      REMOVE_EVENT: NGN.privateconst(Symbol('delete')),\r\n      UPDATE_EVENT: NGN.privateconst(Symbol('update')),\r\n\r\n      // Private data attributes\r\n      uniqueValues: NGN.privateconst(new Set()),\r\n      knownRecords: NGN.privateconst([]), // Linked list of Sets\r\n      name: NGN.const(name),\r\n      isBTree: NGN.privateconst(btree)\r\n    })\r\n\r\n    // Bubble up private events when applicable\r\n    const me = this\r\n    this.on([\r\n      this.CREATE_EVENT,\r\n      this.REMOVE_EVENT,\r\n      this.UPDATE_EVENT\r\n    ], function (oid, value, suppressEvent = false) {\r\n      if (!suppressEvent) {\r\n        me.emit(this.event.toString().replace(/^Symbol\\(|\\)$/g, ''), oid)\r\n      }\r\n    })\r\n\r\n    // When all known records for a given value are removed,\r\n    // clear the unique value index.\r\n    this.on(this.REMOVE_EVENT, (oid, value) => {\r\n      if (this.recordsFor(value).length === 0) {\r\n        let index = this.indexOf(value)\r\n\r\n        if (index >= 0) {\r\n          this.knownRecords.splice(index, 1)\r\n          this.uniqueValues.delete(value)\r\n        }\r\n      }\r\n    })\r\n\r\n    // Support BTree Indexing\r\n    if (this.isBTree) {\r\n      Object.defineProperty(this, 'BTREE', NGN.privateconst(new NGN.DATA.BTree(2, name)))\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 40,
+        "column": 2
+      },
+      "end": {
+        "line": 85,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "btree": {
+          "type": "argument",
+          "label": "BTree",
+          "description": "Use a B-Tree index. This is only available for numeric values and dates.",
+          "code": "btree = false",
+          "start": {
+            "line": 40,
+            "column": 15
+          },
+          "end": {
+            "line": 40,
+            "column": 28
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "name": {
+          "type": "argument",
+          "label": "name",
+          "description": "Optional name for index. This is useful for debugging when multiple\nindexes exist.",
+          "code": "name = 'Untitled Index'",
+          "start": {
+            "line": 40,
+            "column": 30
+          },
+          "end": {
+            "line": 40,
+            "column": 53
+          },
+          "flags": [],
+          "authors": [],
+          "default": "Untitled Index",
+          "datatype": "string",
+          "required": false,
+          "enum": null
+        },
+        "BTree": {
+          "type": "argument",
+          "label": "BTree",
+          "description": "Use a B-Tree index. This is only available for numeric values and dates.",
+          "code": "btree = false",
+          "start": {
+            "line": 40,
+            "column": 15
+          },
+          "end": {
+            "line": 40,
+            "column": 28
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "add": {
+      "type": "method",
+      "label": "add",
+      "description": "Add a field/value to the index.\r\n  \r\n  The value of the model/record indexed field.\r\n  \r\n  The record's object ID (NGN.DATA.Model#OID)",
+      "code": "add (value, oid, suppressEvent = false) {\r\n    let valueIndex = -1\r\n\r\n    // Create or identify the index of the unique value\r\n    if (!this.uniqueValues.has(value)) {\r\n      this.uniqueValues.add(value)\r\n      this.knownRecords.push(new Set())\r\n      valueIndex += this.uniqueValues.size\r\n    } else {\r\n      valueIndex = this.indexOf(value)\r\n    }\r\n\r\n    this.knownRecords[valueIndex].add(oid)\r\n\r\n    // Add BTree indexing\r\n    if (this.isBTree) {\r\n      let btreeValue = value instanceof Date ? value.getTime() : value\r\n\r\n      if (this.BTREE.get(btreeValue) === undefined) {\r\n        this.BTREE.put(btreeValue, valueIndex)\r\n      }\r\n    }\r\n\r\n    this.emit(this.CREATE_EVENT, oid, value, suppressEvent)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 102,
+        "column": 2
+      },
+      "end": {
+        "line": 126,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "The value of the model/record indexed field.",
+          "code": "value",
+          "start": {
+            "line": 102,
+            "column": 7
+          },
+          "end": {
+            "line": 102,
+            "column": 12
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "oid": {
+          "type": "argument",
+          "label": "oid",
+          "description": "The record's object ID",
+          "code": "oid",
+          "start": {
+            "line": 102,
+            "column": 14
+          },
+          "end": {
+            "line": 102,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "symbol",
+          "required": true,
+          "enum": [
+            "NGN.DATA.Model#OID"
+          ]
+        },
+        "suppressEvent": {
+          "type": "argument",
+          "label": "suppressEvent",
+          "description": null,
+          "code": "suppressEvent = false",
+          "start": {
+            "line": 102,
+            "column": 19
+          },
+          "end": {
+            "line": 102,
+            "column": 40
+          },
+          "flags": [],
+          "authors": [],
+          "default": false,
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "remove": {
+      "type": "method",
+      "label": "remove",
+      "description": "Remove a record from the index.\r\n  \r\n  The record's object ID (NGN.DATA.Model#OID)\r\n  \r\n  When specified, the field value will be used to identify\r\n  the index value. Specifying this value will make the remove\r\n  operation faster (uses introspection).",
+      "code": "remove (oid, value, suppressEvent = false) {\r\n    // If a value is specified, attempt to lookup the OID by value.\r\n    if (value !== undefined) {\r\n      let index = this.recordsOf(value)\r\n\r\n      // If a value index is found, remove the OID\r\n      if (index) {\r\n        if (index.delete(oid)) { // Returns false if nothing is actually deleted.\r\n          if (this.isBTree && (!index || index.size === 0)) {\r\n            this.BTREE.delete(value instanceof Date ? value.getTime() : value)\r\n          }\r\n\r\n          this.emit(this.REMOVE_EVENT, oid, value, suppressEvent)\r\n\r\n          return\r\n        }\r\n      }\r\n\r\n      NGN.WARN(`Index value \"${value}\" not found in index.`)\r\n    }\r\n\r\n    // Iterate through all index values to remove the OID (slow)\r\n    let removed = false\r\n    for (let i = 0; i < this.knownRecords.length; i++) {\r\n      if (this.knownRecords[i].delete(oid) && !removed) {\r\n        removed = true\r\n        value = Array.from(this.uniqueValues.values())[i]\r\n\r\n        if (this.isBTree) {\r\n          this.BTREE.delete(value instanceof Date ? value.getTime() : value)\r\n        }\r\n\r\n        break\r\n      }\r\n    }\r\n\r\n    if (removed) {\r\n      this.emit(this.REMOVE_EVENT, oid, value, suppressEvent)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 137,
+        "column": 2
+      },
+      "end": {
+        "line": 176,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "oid": {
+          "type": "argument",
+          "label": "oid",
+          "description": "The record's object ID",
+          "code": "oid",
+          "start": {
+            "line": 137,
+            "column": 10
+          },
+          "end": {
+            "line": 137,
+            "column": 13
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "symbol",
+          "required": true,
+          "enum": [
+            "NGN.DATA.Model#OID"
+          ]
+        },
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "When specified, the field value will be used to identify\nthe index value. Specifying this value will make the remove\noperation faster .",
+          "code": "value",
+          "start": {
+            "line": 137,
+            "column": 15
+          },
+          "end": {
+            "line": 137,
+            "column": 20
+          },
+          "flags": [],
+          "authors": [],
+          "default": "undefined",
+          "datatype": "any",
+          "required": false,
+          "enum": [
+            "uses introspection"
+          ]
+        },
+        "suppressEvent": {
+          "type": "argument",
+          "label": "suppressEvent",
+          "description": null,
+          "code": "suppressEvent = false",
+          "start": {
+            "line": 137,
+            "column": 22
+          },
+          "end": {
+            "line": 137,
+            "column": 43
+          },
+          "flags": [],
+          "authors": [],
+          "default": false,
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "update": {
+      "type": "method",
+      "label": "update",
+      "description": "Update an index to reflect an updated value.",
+      "code": "update (oid, oldValue, newValue, suppressEvent = false) {\r\n    if (oldValue !== newValue) {\r\n      this.remove(oid, oldValue, true)\r\n      this.add(newValue, oid, true)\r\n      this.emit(this.UPDATE_EVENT, oid, null, suppressEvent)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 185,
+        "column": 2
+      },
+      "end": {
+        "line": 191,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "oid": {
+          "type": "argument",
+          "label": "oid",
+          "description": "[description]",
+          "code": "oid",
+          "start": {
+            "line": 185,
+            "column": 10
+          },
+          "end": {
+            "line": 185,
+            "column": 13
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "[type]",
+          "required": true,
+          "enum": null
+        },
+        "oldValue": {
+          "type": "argument",
+          "label": "oldvalue",
+          "description": "[description]",
+          "code": "oldValue",
+          "start": {
+            "line": 185,
+            "column": 15
+          },
+          "end": {
+            "line": 185,
+            "column": 23
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "[type]",
+          "required": true,
+          "enum": null
+        },
+        "newValue": {
+          "type": "argument",
+          "label": "newvalue",
+          "description": "[description]",
+          "code": "newValue",
+          "start": {
+            "line": 185,
+            "column": 25
+          },
+          "end": {
+            "line": 185,
+            "column": 33
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "[type]",
+          "required": true,
+          "enum": null
+        },
+        "suppressEvent": {
+          "type": "argument",
+          "label": "suppressEvent",
+          "description": null,
+          "code": "suppressEvent = false",
+          "start": {
+            "line": 185,
+            "column": 35
+          },
+          "end": {
+            "line": 185,
+            "column": 56
+          },
+          "flags": [],
+          "authors": [],
+          "default": false,
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "oldvalue": {
+          "type": "argument",
+          "label": "oldvalue",
+          "description": "[description]",
+          "code": "oldValue",
+          "start": {
+            "line": 185,
+            "column": 15
+          },
+          "end": {
+            "line": 185,
+            "column": 23
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "[type]",
+          "required": true,
+          "enum": null
+        },
+        "newvalue": {
+          "type": "argument",
+          "label": "newvalue",
+          "description": "[description]",
+          "code": "newValue",
+          "start": {
+            "line": 185,
+            "column": 25
+          },
+          "end": {
+            "line": 185,
+            "column": 33
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "[type]",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "[type]",
+      "returnDescription": "description",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "reset": {
+      "type": "method",
+      "label": "reset",
+      "description": "Forcibly reset the index (clears everything).",
+      "code": "reset () {\r\n    this.uniqueValues.clear()\r\n    this.knownRecords.splice(0)\r\n\r\n    if (this.isBTree) {\r\n      this.BTREE.reset()\r\n    }\r\n\r\n    this.emit('reset')\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 196,
+        "column": 2
+      },
+      "end": {
+        "line": 205,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "indexOf": {
+      "type": "method",
+      "label": "indexOf",
+      "description": "Retrieve the index number of known records for the\r\n  specified value.\r\n  \r\n  \r\n  The unique value for which records are known.\r\n  \r\n  The 0-based index of known records. Returns `-1` if no\r\n  index exists.",
+      "code": "indexOf (value) {\r\n    return Array.from(this.uniqueValues.keys()).indexOf(value)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 217,
+        "column": 2
+      },
+      "end": {
+        "line": 219,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "The unique value for which records are known.",
+          "code": "value",
+          "start": {
+            "line": 217,
+            "column": 11
+          },
+          "end": {
+            "line": 217,
+            "column": 16
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "[numeric]",
+      "returnDescription": "null The 0-based index of known records. Returns `-1` if no\nindex exists.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "recordsOf": {
+      "type": "method",
+      "label": "recordsOf",
+      "description": "The records of a particular value.\r\n  \r\n  \r\n  The index field value to use as a lookup.\r\n  \r\n  An set of object ID's or `null` if none exist.",
+      "code": "recordsOf (value) {\r\n    let valueIndex = this.indexOf(value)\r\n\r\n    return valueIndex < 0 ? null : this.knownRecords[valueIndex]\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 229,
+        "column": 2
+      },
+      "end": {
+        "line": 233,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "The index field value to use as a lookup.",
+          "code": "value",
+          "start": {
+            "line": 229,
+            "column": 13
+          },
+          "end": {
+            "line": 229,
+            "column": 18
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "Set",
+      "returnDescription": "null An set of object ID's or `null` if none exist.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "recordsFor": {
+      "type": "method",
+      "label": "recordsFor",
+      "description": "Get the list of records for the given value.\r\n  \r\n  The value of the index to lookup.\r\n  \r\n  The array contains OID reference values (records).",
+      "code": "recordsFor (value) {\r\n    let index = this.recordsOf(value)\r\n\r\n    if (index === null || index.size === 0) {\r\n      return []\r\n    }\r\n\r\n    return Array.from(index.values())\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 242,
+        "column": 2
+      },
+      "end": {
+        "line": 250,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "The value of the index to lookup.",
+          "code": "value",
+          "start": {
+            "line": 242,
+            "column": 14
+          },
+          "end": {
+            "line": 242,
+            "column": 19
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "array",
+      "returnDescription": "null The array contains OID reference values .",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

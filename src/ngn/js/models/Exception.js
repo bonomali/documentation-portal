@@ -1,5 +1,5 @@
 class ExceptionModel extends SnippetModel {
-  constructor (cffg = {}) {
+  constructor (cfg = {}) {
     cfg.fields = Object.assign(cfg.fields || {}, {
       severity: String,
       message: String,

@@ -1,0 +1,1297 @@
+{
+  "type": "class",
+  "label": "Network",
+  "description": null,
+  "code": "class Network { // eslint-disable-line\r\n  constructor () {\r\n    Object.defineProperties(this, {\r\n      /**\r\n       * @method parseRequestConfiguration\r\n       * Prepare common configuration attributes for a request.\r\n       * @return {NGN.NET.Request}\r\n       * @private\r\n       */\r\n      parseRequestConfiguration: NGN.private((cfg, method = 'GET') => {\r\n        if (typeof cfg === 'string') {\r\n          cfg = {\r\n            url: cfg\r\n          }\r\n        }\r\n\r\n        cfg = cfg || {}\r\n        cfg.method = method\r\n        cfg.url = NGN.coalesceb(cfg.url, hostname) // eslint-disable-line no-undef\r\n\r\n        return new NGN.NET.Request(cfg)\r\n      }),\r\n\r\n      // Returns a scoped method for sending the request, after preparing it.\r\n      makeRequest: NGN.private((method) => {\r\n        const me = this\r\n\r\n        return function () {\r\n          let args = NGN.slice(arguments)\r\n          let callback\r\n\r\n          if (NGN.isFn(args[args.length - 1])) {\r\n            callback = args.pop()\r\n          }\r\n\r\n          args.push(method)\r\n\r\n          let request = me.parseRequestConfiguration(...args)\r\n\r\n          // Send the request\r\n          me.send(request, callback)\r\n        }\r\n      }),\r\n\r\n      // Helper aliases (undocumented)\r\n      OPTIONS: NGN.privateconst(this.options.bind(this)),\r\n      HEAD: NGN.privateconst(this.head.bind(this)),\r\n      GET: NGN.privateconst(this.get.bind(this)),\r\n      POST: NGN.privateconst(this.post.bind(this)),\r\n      PUT: NGN.privateconst(this.put.bind(this)),\r\n      DELETE: NGN.privateconst(this.delete.bind(this)),\r\n      TRACE: NGN.privateconst(this.trace.bind(this)),\r\n      JSON: NGN.privateconst(this.json.bind(this)),\r\n      JSONP: NGN.privateconst(this.jsonp.bind(this))\r\n    })\r\n  }\r\n\r\n  get Request () {\r\n    return Request\r\n  }\r\n\r\n  /**\r\n   * @method request\r\n   * Send a request. In most cases, it is easier to use one of the built-in\r\n   * request functions (#get, #post, #put, #delete, #json, etc). This method\r\n   * is available for creating custom requests.\r\n   * @param  {Object} configuration\r\n   * Provide a #NGN.NET.Request configuration.\r\n   * @param  {Function} callback\r\n   * The callback to execute when the request is complete.\r\n   */\r\n  request (cfg, callback) {\r\n    cfg = cfg || {}\r\n    cfg.method = NGN.coalesceb(cfg.method, 'GET')\r\n\r\n    if (NGN.isFn(this[cfg.method])) {\r\n      this.makeRequest(cfg.method)(...arguments)\r\n    } else {\r\n      this.send(new NGN.NET.Request(cfg), callback)\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method options\r\n   * Issue a `OPTIONS` request.\r\n   * @param {string|object} url\r\n   * The URL to issue the request to, or a configuration object.\r\n   * The configuration object accepts all of the #NGN.NET.Request\r\n   * configuration options (except method, which is defined automatically).\r\n   * @param {Function} callback\r\n   * A callback method to run when the request is complete.\r\n   * This receives the response object as the only argument.\r\n   */\r\n  options () {\r\n    this.makeRequest('OPTIONS').apply(this, arguments)\r\n  }\r\n\r\n  /**\r\n   * @method head\r\n   * Issue a `HEAD` request.\r\n   * @param {string|object} url\r\n   * The URL to issue the request to, or a configuration object.\r\n   * The configuration object accepts all of the #NGN.NET.Request\r\n   * configuration options (except method, which is defined automatically).\r\n   * @param {Function} callback\r\n   * A callback method to run when the request is complete.\r\n   * This receives the response object as the only argument.\r\n   */\r\n  head () {\r\n    this.makeRequest('HEAD').apply(this, arguments)\r\n  }\r\n\r\n  /**\r\n   * @method get\r\n   * Issue a `GET` request.\r\n   * @param {string|object} url\r\n   * The URL to issue the request to.\r\n   * The configuration object accepts all of the #NGN.NET.Request\r\n   * configuration options (except method, which is defined automatically).\r\n   * @param {Function} callback\r\n   * A callback method to run when the request is complete.\r\n   * This receives the response object as the only argument.\r\n   */\r\n  get () {\r\n    this.makeRequest('GET').apply(this, arguments)\r\n  }\r\n\r\n  /**\r\n   * @method post\r\n   * Issue a `POST` request.\r\n   * @param {string|object} url\r\n   * The URL to issue the request to.\r\n   * The configuration object accepts all of the #NGN.NET.Request\r\n   * configuration options (except method, which is defined automatically).\r\n   * @param {Function} callback\r\n   * A callback method to run when the request is complete.\r\n   * This receives the response object as the only argument.\r\n   */\r\n  post () {\r\n    this.makeRequest('POST').apply(this, arguments)\r\n  }\r\n\r\n  /**\r\n   * @method put\r\n   * Issue a `PUT` request.\r\n   * @param {string|object} url\r\n   * The URL to issue the request to.\r\n   * The configuration object accepts all of the #NGN.NET.Request\r\n   * configuration options (except method, which is defined automatically).\r\n   * @param {Function} callback\r\n   * A callback method to run when the request is complete.\r\n   * This receives the response object as the only argument.\r\n   */\r\n  put () {\r\n    this.makeRequest('PUT').apply(this, arguments)\r\n  }\r\n\r\n  /**\r\n   * @method delete\r\n   * Issue a `DELETE` request.\r\n   * @param {string|object} url\r\n   * The URL to issue the request to.\r\n   * The configuration object accepts all of the #NGN.NET.Request\r\n   * configuration options (except method, which is defined automatically).\r\n   * @param {Function} callback\r\n   * A callback method to run when the request is complete.\r\n   * This receives the response object as the only argument.\r\n   */\r\n  delete () {\r\n    this.makeRequest('DELETE').apply(this, arguments)\r\n  }\r\n\r\n  /**\r\n   * @method trace\r\n   * Issue a `TRACE` request. This is a debugging method, which\r\n   * echoes input back to the user. It is a standard HTTP method,\r\n   * but considered a security risk by many practioners and may\r\n   * not be supported by remote hosts.\r\n   * @param {string|object} url\r\n   * The URL to issue the request to.\r\n   * The configuration object accepts all of the #NGN.NET.Request\r\n   * configuration options (except method, which is defined automatically).\r\n   * @param {Function} callback\r\n   * A callback method to run when the request is complete.\r\n   * This receives the response object as the only argument.\r\n   */\r\n  trace () {\r\n    NGN.WARN('NGN.NET.Request.method', 'An HTTP TRACE request was made.')\r\n    this.makeRequest('TRACE').apply(this, arguments)\r\n  }\r\n\r\n  /**\r\n   * @method json\r\n   * This is a shortcut method for creating a `GET` request and\r\n   * auto-processing the response body into a JSON object.\r\n   * @param  {string} url\r\n   * The URL to issue the request to.\r\n   * @param  {Function} callback\r\n   * This receives a JSON response object from the server.\r\n   * @param {Error} callback.error\r\n   * If the request cannot be completed for any reason, this argument will be\r\n   * populated with the error. If the request is successful, this will be `null`.\r\n   * @param {Object} callback.data\r\n   * The JSON response from the remote URL.\r\n   */\r\n  json (url, callback) {\r\n    if (!NGN.isFn(callback)) {\r\n      throw new Error('NGN.NET.json requires a callback method.')\r\n    }\r\n\r\n    // Request method is \"GET\"\r\n    let request = this.parseRequestConfiguration({url})\r\n\r\n    this.preflight(request)\r\n\r\n    request.send((response) => {\r\n      try {\r\n        let responseData = JSON.parse(response.responseText)\r\n        callback(null, responseData)\r\n      } catch (e) {\r\n        e.response = NGN.coalesce(response.responseText)\r\n        callback(e, null)\r\n      }\r\n    })\r\n  }\r\n\r\n  /**\r\n   * @method jsonp\r\n   * Execute a request via JSONP. JSONP is only available in browser\r\n   * environments, since it's operation is dependent on the existance of\r\n   * the DOM. However; this may work with some headless browsers.\r\n   * @param {string} url\r\n   * The URL of the JSONP endpoint.\r\n   * @param {function} callback\r\n   * Handles the response.\r\n   * @param {Error} callback.error\r\n   * If an error occurred, this will be populated. If no error occurred, this will\r\n   * be null.\r\n   * @param {object|array} callback.response\r\n   * The response.\r\n   * @environment browser\r\n   */\r\n  jsonp (url, callback) {\r\n    /* node-only */\r\n    NGN.WARN('NET.Request', 'An unsupported JSONP request was made.')\r\n    callback(new Error('JSONP unsupported in Node-like environments.'))\r\n    /* end-node-only */\r\n    /* browser-only */\r\n    const fn = 'jsonp_callback_' + Math.round(100000 * Math.random())\r\n\r\n    window[fn] = (data) => {\r\n      delete window[fn]\r\n\r\n      document.body.removeChild(script)\r\n\r\n      return callback(null, data)\r\n    }\r\n\r\n    let script = document.createElement('script')\r\n\r\n    script.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'callback=' + fn\r\n\r\n    script.addEventListener('error', (e) => {\r\n      delete window[fn]\r\n\r\n      return callback(new Error('The JSONP request was blocked. This may be the result of an invalid URL, cross origin restrictions, or the remote server may not be online.'))\r\n    })\r\n\r\n    document.body.appendChild(script)\r\n    /* end-browser-only */\r\n  }\r\n\r\n  // Apply a preflight request option to the network request.\r\n  send (request, callback) {\r\n    this.preflight(request)\r\n    request.send(callback)\r\n  }\r\n\r\n  /**\r\n   * @method preflight\r\n   * This is a no-op method that runs before a request is sent.\r\n   * This exists specicially to be overridden by class extensions.\r\n   */\r\n  preflight (request) {}\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 4,
+    "column": 15
+  },
+  "end": {
+    "line": 288,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "net/Network.js",
+  "extends": null,
+  "configuration": {},
+  "properties": {
+    "parseRequestConfiguration": {
+      "type": "property",
+      "label": "parseRequestConfiguration",
+      "description": "Prepare common configuration attributes for a request.",
+      "code": "parseRequestConfiguration: NGN.private((cfg, method = 'GET') => {\r\n        if (typeof cfg === 'string') {\r\n          cfg = {\r\n            url: cfg\r\n          }\r\n        }\r\n\r\n        cfg = cfg || {}\r\n        cfg.method = method\r\n        cfg.url = NGN.coalesceb(cfg.url, hostname) // eslint-disable-line no-undef\r\n\r\n        return new NGN.NET.Request(cfg)\r\n      })",
+      "start": {
+        "line": 13,
+        "column": 6
+      },
+      "end": {
+        "line": 25,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "makeRequest": {
+      "type": "property",
+      "label": "makeRequest",
+      "description": null,
+      "code": "makeRequest: NGN.private((method) => {\r\n        const me = this\r\n\r\n        return function () {\r\n          let args = NGN.slice(arguments)\r\n          let callback\r\n\r\n          if (NGN.isFn(args[args.length - 1])) {\r\n            callback = args.pop()\r\n          }\r\n\r\n          args.push(method)\r\n\r\n          let request = me.parseRequestConfiguration(...args)\r\n\r\n          // Send the request\r\n          me.send(request, callback)\r\n        }\r\n      })",
+      "start": {
+        "line": 28,
+        "column": 6
+      },
+      "end": {
+        "line": 46,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "OPTIONS": {
+      "type": "property",
+      "label": "OPTIONS",
+      "description": null,
+      "code": "OPTIONS: NGN.privateconst(this.options.bind(this))",
+      "start": {
+        "line": 49,
+        "column": 6
+      },
+      "end": {
+        "line": 49,
+        "column": 56
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "HEAD": {
+      "type": "property",
+      "label": "HEAD",
+      "description": null,
+      "code": "HEAD: NGN.privateconst(this.head.bind(this))",
+      "start": {
+        "line": 50,
+        "column": 6
+      },
+      "end": {
+        "line": 50,
+        "column": 50
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "GET": {
+      "type": "property",
+      "label": "GET",
+      "description": null,
+      "code": "GET: NGN.privateconst(this.get.bind(this))",
+      "start": {
+        "line": 51,
+        "column": 6
+      },
+      "end": {
+        "line": 51,
+        "column": 48
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "POST": {
+      "type": "property",
+      "label": "POST",
+      "description": null,
+      "code": "POST: NGN.privateconst(this.post.bind(this))",
+      "start": {
+        "line": 52,
+        "column": 6
+      },
+      "end": {
+        "line": 52,
+        "column": 50
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "PUT": {
+      "type": "property",
+      "label": "PUT",
+      "description": null,
+      "code": "PUT: NGN.privateconst(this.put.bind(this))",
+      "start": {
+        "line": 53,
+        "column": 6
+      },
+      "end": {
+        "line": 53,
+        "column": 48
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "DELETE": {
+      "type": "property",
+      "label": "DELETE",
+      "description": null,
+      "code": "DELETE: NGN.privateconst(this.delete.bind(this))",
+      "start": {
+        "line": 54,
+        "column": 6
+      },
+      "end": {
+        "line": 54,
+        "column": 54
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "TRACE": {
+      "type": "property",
+      "label": "TRACE",
+      "description": null,
+      "code": "TRACE: NGN.privateconst(this.trace.bind(this))",
+      "start": {
+        "line": 55,
+        "column": 6
+      },
+      "end": {
+        "line": 55,
+        "column": 52
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "JSON": {
+      "type": "property",
+      "label": "JSON",
+      "description": null,
+      "code": "JSON: NGN.privateconst(this.json.bind(this))",
+      "start": {
+        "line": 56,
+        "column": 6
+      },
+      "end": {
+        "line": 56,
+        "column": 50
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "JSONP": {
+      "type": "property",
+      "label": "JSONP",
+      "description": null,
+      "code": "JSONP: NGN.privateconst(this.jsonp.bind(this))",
+      "start": {
+        "line": 57,
+        "column": 6
+      },
+      "end": {
+        "line": 57,
+        "column": 52
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "Request": {
+      "type": "property",
+      "label": "Request",
+      "description": null,
+      "code": "get Request () {\r\n    return Request\r\n  }",
+      "start": {
+        "line": 61,
+        "column": 2
+      },
+      "end": {
+        "line": 63,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor () {\r\n    Object.defineProperties(this, {\r\n      /**\r\n       * @method parseRequestConfiguration\r\n       * Prepare common configuration attributes for a request.\r\n       * @return {NGN.NET.Request}\r\n       * @private\r\n       */\r\n      parseRequestConfiguration: NGN.private((cfg, method = 'GET') => {\r\n        if (typeof cfg === 'string') {\r\n          cfg = {\r\n            url: cfg\r\n          }\r\n        }\r\n\r\n        cfg = cfg || {}\r\n        cfg.method = method\r\n        cfg.url = NGN.coalesceb(cfg.url, hostname) // eslint-disable-line no-undef\r\n\r\n        return new NGN.NET.Request(cfg)\r\n      }),\r\n\r\n      // Returns a scoped method for sending the request, after preparing it.\r\n      makeRequest: NGN.private((method) => {\r\n        const me = this\r\n\r\n        return function () {\r\n          let args = NGN.slice(arguments)\r\n          let callback\r\n\r\n          if (NGN.isFn(args[args.length - 1])) {\r\n            callback = args.pop()\r\n          }\r\n\r\n          args.push(method)\r\n\r\n          let request = me.parseRequestConfiguration(...args)\r\n\r\n          // Send the request\r\n          me.send(request, callback)\r\n        }\r\n      }),\r\n\r\n      // Helper aliases (undocumented)\r\n      OPTIONS: NGN.privateconst(this.options.bind(this)),\r\n      HEAD: NGN.privateconst(this.head.bind(this)),\r\n      GET: NGN.privateconst(this.get.bind(this)),\r\n      POST: NGN.privateconst(this.post.bind(this)),\r\n      PUT: NGN.privateconst(this.put.bind(this)),\r\n      DELETE: NGN.privateconst(this.delete.bind(this)),\r\n      TRACE: NGN.privateconst(this.trace.bind(this)),\r\n      JSON: NGN.privateconst(this.json.bind(this)),\r\n      JSONP: NGN.privateconst(this.jsonp.bind(this))\r\n    })\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 5,
+        "column": 2
+      },
+      "end": {
+        "line": 59,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "parseRequestConfiguration": {
+      "type": "method",
+      "label": "parseRequestConfiguration",
+      "description": "Prepare common configuration attributes for a request.",
+      "code": "parseRequestConfiguration: NGN.private((cfg, method = 'GET') => {\r\n        if (typeof cfg === 'string') {\r\n          cfg = {\r\n            url: cfg\r\n          }\r\n        }\r\n\r\n        cfg = cfg || {}\r\n        cfg.method = method\r\n        cfg.url = NGN.coalesceb(cfg.url, hostname) // eslint-disable-line no-undef\r\n\r\n        return new NGN.NET.Request(cfg)\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 13,
+        "column": 6
+      },
+      "end": {
+        "line": 25,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "cfg": {
+          "type": "argument",
+          "label": "cfg",
+          "description": null,
+          "code": "cfg",
+          "start": {
+            "line": 13,
+            "column": 46
+          },
+          "end": {
+            "line": 13,
+            "column": 49
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "method": {
+          "type": "argument",
+          "label": "method",
+          "description": null,
+          "code": "method = 'GET'",
+          "start": {
+            "line": 13,
+            "column": 51
+          },
+          "end": {
+            "line": 13,
+            "column": 65
+          },
+          "flags": [],
+          "authors": [],
+          "default": "GET",
+          "datatype": "string",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "NGN.NET.Request",
+      "returnDescription": "",
+      "kind": "init",
+      "computed": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "request": {
+      "type": "method",
+      "label": "request",
+      "description": "Send a request. In most cases, it is easier to use one of the built-in\nrequest functions . This method\nis available for creating custom requests.",
+      "code": "request (cfg, callback) {\r\n    cfg = cfg || {}\r\n    cfg.method = NGN.coalesceb(cfg.method, 'GET')\r\n\r\n    if (NGN.isFn(this[cfg.method])) {\r\n      this.makeRequest(cfg.method)(...arguments)\r\n    } else {\r\n      this.send(new NGN.NET.Request(cfg), callback)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 75,
+        "column": 2
+      },
+      "end": {
+        "line": 84,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "cfg": {
+          "type": "argument",
+          "label": "configuration",
+          "description": "Provide a #NGN.NET.Request configuration.",
+          "code": "cfg",
+          "start": {
+            "line": 75,
+            "column": 11
+          },
+          "end": {
+            "line": 75,
+            "column": 14
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "object",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "argument",
+          "label": "callback",
+          "description": null,
+          "code": "callback",
+          "start": {
+            "line": 75,
+            "column": 11
+          },
+          "end": {
+            "line": 75,
+            "column": 14
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "options": {
+      "type": "method",
+      "label": "options",
+      "description": "Issue a `OPTIONS` request.",
+      "code": "options () {\r\n    this.makeRequest('OPTIONS').apply(this, arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 97,
+        "column": 2
+      },
+      "end": {
+        "line": 99,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "url": {
+          "type": "argument",
+          "label": "url",
+          "description": "The URL to issue the request to, or a configuration object.\nThe configuration object accepts all of the #NGN.NET.Request\nconfiguration options .",
+          "code": "options () {\r\n    this.makeRequest('OPTIONS').apply(this, arguments)\r\n  }",
+          "start": {
+            "line": 97,
+            "column": 2
+          },
+          "end": {
+            "line": 99,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": [
+            "except method",
+            " which is defined automatically"
+          ]
+        },
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "A callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "code": "@param {Function} callback\nA callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "start": {
+            "line": 97,
+            "column": 2
+          },
+          "end": {
+            "line": 99,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "head": {
+      "type": "method",
+      "label": "head",
+      "description": "Issue a `HEAD` request.",
+      "code": "head () {\r\n    this.makeRequest('HEAD').apply(this, arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 112,
+        "column": 2
+      },
+      "end": {
+        "line": 114,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "url": {
+          "type": "argument",
+          "label": "url",
+          "description": "The URL to issue the request to, or a configuration object.\nThe configuration object accepts all of the #NGN.NET.Request\nconfiguration options .",
+          "code": "head () {\r\n    this.makeRequest('HEAD').apply(this, arguments)\r\n  }",
+          "start": {
+            "line": 112,
+            "column": 2
+          },
+          "end": {
+            "line": 114,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": [
+            "except method",
+            " which is defined automatically"
+          ]
+        },
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "A callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "code": "@param {Function} callback\nA callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "start": {
+            "line": 112,
+            "column": 2
+          },
+          "end": {
+            "line": 114,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "get": {
+      "type": "method",
+      "label": "get",
+      "description": "Issue a `GET` request.",
+      "code": "get () {\r\n    this.makeRequest('GET').apply(this, arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 127,
+        "column": 2
+      },
+      "end": {
+        "line": 129,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "url": {
+          "type": "argument",
+          "label": "url",
+          "description": "The URL to issue the request to.\nThe configuration object accepts all of the #NGN.NET.Request\nconfiguration options .",
+          "code": "get () {\r\n    this.makeRequest('GET').apply(this, arguments)\r\n  }",
+          "start": {
+            "line": 127,
+            "column": 2
+          },
+          "end": {
+            "line": 129,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": [
+            "except method",
+            " which is defined automatically"
+          ]
+        },
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "A callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "code": "@param {Function} callback\nA callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "start": {
+            "line": 127,
+            "column": 2
+          },
+          "end": {
+            "line": 129,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "post": {
+      "type": "method",
+      "label": "post",
+      "description": "Issue a `POST` request.",
+      "code": "post () {\r\n    this.makeRequest('POST').apply(this, arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 142,
+        "column": 2
+      },
+      "end": {
+        "line": 144,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "url": {
+          "type": "argument",
+          "label": "url",
+          "description": "The URL to issue the request to.\nThe configuration object accepts all of the #NGN.NET.Request\nconfiguration options .",
+          "code": "post () {\r\n    this.makeRequest('POST').apply(this, arguments)\r\n  }",
+          "start": {
+            "line": 142,
+            "column": 2
+          },
+          "end": {
+            "line": 144,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": [
+            "except method",
+            " which is defined automatically"
+          ]
+        },
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "A callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "code": "@param {Function} callback\nA callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "start": {
+            "line": 142,
+            "column": 2
+          },
+          "end": {
+            "line": 144,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "put": {
+      "type": "method",
+      "label": "put",
+      "description": "Issue a `PUT` request.",
+      "code": "put () {\r\n    this.makeRequest('PUT').apply(this, arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 157,
+        "column": 2
+      },
+      "end": {
+        "line": 159,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "url": {
+          "type": "argument",
+          "label": "url",
+          "description": "The URL to issue the request to.\nThe configuration object accepts all of the #NGN.NET.Request\nconfiguration options .",
+          "code": "put () {\r\n    this.makeRequest('PUT').apply(this, arguments)\r\n  }",
+          "start": {
+            "line": 157,
+            "column": 2
+          },
+          "end": {
+            "line": 159,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": [
+            "except method",
+            " which is defined automatically"
+          ]
+        },
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "A callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "code": "@param {Function} callback\nA callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "start": {
+            "line": 157,
+            "column": 2
+          },
+          "end": {
+            "line": 159,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "delete": {
+      "type": "method",
+      "label": "delete",
+      "description": "Issue a `DELETE` request.",
+      "code": "delete () {\r\n    this.makeRequest('DELETE').apply(this, arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 172,
+        "column": 2
+      },
+      "end": {
+        "line": 174,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "url": {
+          "type": "argument",
+          "label": "url",
+          "description": "The URL to issue the request to.\nThe configuration object accepts all of the #NGN.NET.Request\nconfiguration options .",
+          "code": "delete () {\r\n    this.makeRequest('DELETE').apply(this, arguments)\r\n  }",
+          "start": {
+            "line": 172,
+            "column": 2
+          },
+          "end": {
+            "line": 174,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": [
+            "except method",
+            " which is defined automatically"
+          ]
+        },
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "A callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "code": "@param {Function} callback\nA callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "start": {
+            "line": 172,
+            "column": 2
+          },
+          "end": {
+            "line": 174,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "trace": {
+      "type": "method",
+      "label": "trace",
+      "description": "Issue a `TRACE` request. This is a debugging method, which\nechoes input back to the user. It is a standard HTTP method,\nbut considered a security risk by many practioners and may\nnot be supported by remote hosts.",
+      "code": "trace () {\r\n    NGN.WARN('NGN.NET.Request.method', 'An HTTP TRACE request was made.')\r\n    this.makeRequest('TRACE').apply(this, arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 190,
+        "column": 2
+      },
+      "end": {
+        "line": 193,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "url": {
+          "type": "argument",
+          "label": "url",
+          "description": "The URL to issue the request to.\nThe configuration object accepts all of the #NGN.NET.Request\nconfiguration options .",
+          "code": "trace () {\r\n    NGN.WARN('NGN.NET.Request.method', 'An HTTP TRACE request was made.')\r\n    this.makeRequest('TRACE').apply(this, arguments)\r\n  }",
+          "start": {
+            "line": 190,
+            "column": 2
+          },
+          "end": {
+            "line": 193,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": [
+            "except method",
+            " which is defined automatically"
+          ]
+        },
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "A callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "code": "@param {Function} callback\nA callback method to run when the request is complete.\nThis receives the response object as the only argument.",
+          "start": {
+            "line": 190,
+            "column": 2
+          },
+          "end": {
+            "line": 193,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "json": {
+      "type": "method",
+      "label": "json",
+      "description": "This is a shortcut method for creating a `GET` request and\nauto-processing the response body into a JSON object.",
+      "code": "json (url, callback) {\r\n    if (!NGN.isFn(callback)) {\r\n      throw new Error('NGN.NET.json requires a callback method.')\r\n    }\r\n\r\n    // Request method is \"GET\"\r\n    let request = this.parseRequestConfiguration({url})\r\n\r\n    this.preflight(request)\r\n\r\n    request.send((response) => {\r\n      try {\r\n        let responseData = JSON.parse(response.responseText)\r\n        callback(null, responseData)\r\n      } catch (e) {\r\n        e.response = NGN.coalesce(response.responseText)\r\n        callback(e, null)\r\n      }\r\n    })\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 209,
+        "column": 2
+      },
+      "end": {
+        "line": 228,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "callback": {
+          "type": "argument",
+          "label": "callback",
+          "description": null,
+          "code": "callback",
+          "start": {
+            "line": 209,
+            "column": 8
+          },
+          "end": {
+            "line": 209,
+            "column": 11
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "jsonp": {
+      "type": "method",
+      "label": "jsonp",
+      "description": "Execute a request via JSONP. JSONP is only available in browser\nenvironments, since it's operation is dependent on the existance of\nthe DOM. However; this may work with some headless browsers.",
+      "code": "jsonp (url, callback) {\r\n    /* node-only */\r\n    NGN.WARN('NET.Request', 'An unsupported JSONP request was made.')\r\n    callback(new Error('JSONP unsupported in Node-like environments.'))\r\n    /* end-node-only */\r\n    /* browser-only */\r\n    const fn = 'jsonp_callback_' + Math.round(100000 * Math.random())\r\n\r\n    window[fn] = (data) => {\r\n      delete window[fn]\r\n\r\n      document.body.removeChild(script)\r\n\r\n      return callback(null, data)\r\n    }\r\n\r\n    let script = document.createElement('script')\r\n\r\n    script.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'callback=' + fn\r\n\r\n    script.addEventListener('error', (e) => {\r\n      delete window[fn]\r\n\r\n      return callback(new Error('The JSONP request was blocked. This may be the result of an invalid URL, cross origin restrictions, or the remote server may not be online.'))\r\n    })\r\n\r\n    document.body.appendChild(script)\r\n    /* end-browser-only */\r\n  }",
+      "tags": {
+        "environment": {
+          "tag": "environment",
+          "name": "browser",
+          "optional": false,
+          "type": "",
+          "description": "",
+          "line": 14,
+          "source": "@environment browser",
+          "options": null
+        }
+      },
+      "exceptions": {},
+      "start": {
+        "line": 246,
+        "column": 2
+      },
+      "end": {
+        "line": 274,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "url": {
+          "type": "argument",
+          "label": "url",
+          "description": "The URL of the JSONP endpoint.",
+          "code": "url",
+          "start": {
+            "line": 246,
+            "column": 9
+          },
+          "end": {
+            "line": 246,
+            "column": 12
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "Handles the response.",
+          "code": "@param {function} callback\nHandles the response.",
+          "start": {
+            "line": 246,
+            "column": 2
+          },
+          "end": {
+            "line": 274,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {
+            "error": {
+              "type": "argument",
+              "label": "error",
+              "description": "If an error occurred, this will be populated. If no error occurred, this will\nbe null.",
+              "code": "@param {Error} callback.error\nIf an error occurred, this will be populated. If no error occurred, this will\nbe null.",
+              "start": {
+                "line": 246,
+                "column": 14
+              },
+              "end": {
+                "line": 246,
+                "column": 22
+              },
+              "flags": [],
+              "authors": [],
+              "default": null,
+              "datatype": "error",
+              "required": true,
+              "enum": null
+            },
+            "response": {
+              "type": "argument",
+              "label": "response",
+              "description": "The response.",
+              "code": "@param {object|array} callback.response\nThe response.",
+              "start": {
+                "line": 246,
+                "column": 14
+              },
+              "end": {
+                "line": 246,
+                "column": 22
+              },
+              "flags": [],
+              "authors": [],
+              "default": null,
+              "datatype": "object|array",
+              "required": true,
+              "enum": null
+            }
+          },
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "send": {
+      "type": "method",
+      "label": "send",
+      "description": null,
+      "code": "send (request, callback) {\r\n    this.preflight(request)\r\n    request.send(callback)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 277,
+        "column": 2
+      },
+      "end": {
+        "line": 280,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "request": {
+          "type": "argument",
+          "label": "request",
+          "description": null,
+          "code": "request",
+          "start": {
+            "line": 277,
+            "column": 8
+          },
+          "end": {
+            "line": 277,
+            "column": 15
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "argument",
+          "label": "callback",
+          "description": null,
+          "code": "callback",
+          "start": {
+            "line": 277,
+            "column": 17
+          },
+          "end": {
+            "line": 277,
+            "column": 25
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "preflight": {
+      "type": "method",
+      "label": "preflight",
+      "description": "This is a no-op method that runs before a request is sent.\nThis exists specicially to be overridden by class extensions.",
+      "code": "preflight (request) {}",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 287,
+        "column": 2
+      },
+      "end": {
+        "line": 287,
+        "column": 24
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "request": {
+          "type": "argument",
+          "label": "request",
+          "description": null,
+          "code": "request",
+          "start": {
+            "line": 287,
+            "column": 13
+          },
+          "end": {
+            "line": 287,
+            "column": 20
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

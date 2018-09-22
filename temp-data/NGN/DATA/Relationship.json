@@ -1,0 +1,346 @@
+{
+  "type": "class",
+  "label": "NGN.DATA.Relationship",
+  "description": "The manner of relationship. This can be one of 3 values: `store`\r\n  (NGN.DATA.Store), `model` (NGN.DATA.Model), or `collection`. A collection\r\n  is a special configuration shortcut used to represent a new store of models.\r\n  ```math\r\n  E = mc^2\r\n  ```\r\n  ```graph\r\n  graph LR\r\n  a-->b\r\n  ```\r\n  For example, a model may be defined as:\r\n  \n  ```js\r\n  let Pet = new NGN.DATA.Model({\r\n    fields: {\r\n      name: String,\r\n      animalType: String\r\n    }\r\n  })\r\n  \n  let Person = new NGN.DATA.Model({\r\n    fields: {\r\n      dateOfBirth: Date\r\n    },\r\n    relationships: {\r\n      pets: [Pet]        // <== Collection\r\n    }\r\n  })\r\n  ```",
+  "code": "class NGNRelationshipField extends DataField { // eslint-disable-line\r\n  constructor (cfg = {}) {\r\n    let type = NGN.typeof(cfg.join)\r\n\r\n    // Assure valid configuration\r\n    if (!cfg.join) {\r\n      throw new InvalidConfigurationError('Missing \"join\" configuration property.')\r\n    } else if (\r\n      ['model', 'store'].indexOf(type) < 0 &&\r\n      (\r\n        type !== 'array' ||\r\n        NGN.typeof(cfg.join[0]) !== 'model'\r\n      )\r\n    ) {\r\n      throw new InvalidConfigurationError(`The join specified is not a valid NGN.DATA.Model, NGN.DATA.Store, or collection. It is a ${NGN.typeof(cfg.join)}\"`)\r\n    }\r\n\r\n    // Create optional cardinality validations\r\n\r\n    // Initialize\r\n    cfg.identifier = false\r\n    super(cfg)\r\n\r\n    this.METADATA.fieldType = 'join'\r\n    this.METADATA.join = Symbol('relationship')\r\n\r\n    // Apply event monitoring to the #record.\r\n    this.METADATA.applyMonitor = () => {\r\n      if (this.METADATA.manner === 'model') {\r\n        // Model Event Relay\r\n        this.METADATA.join.pool('field.', {\r\n          create: this.METADATA.commonModelEventHandler('field.create'),\r\n          update: this.METADATA.commonModelEventHandler('field.update'),\r\n          remove: this.METADATA.commonModelEventHandler('field.remove'),\r\n          invalid: (data) => {\r\n            this.emit(['invalid', `invalid.${this.METADATA.name}.${data.field}`])\r\n          },\r\n          valid: (data) => {\r\n            this.emit(['valid', `valid.${this.METADATA.name}.${data.field}`])\r\n          }\r\n        })\r\n      //   this.METADATA.join.pool('field.', {\r\n      //     create: this.METADATA.commonModelEventHandler('field.create'),\r\n      //     update: this.METADATA.commonModelEventHandler('field.update'),\r\n      //     remove: this.METADATA.commonModelEventHandler('field.remove'),\r\n      //     invalid: (data) => {\r\n      //       this.emit(['invalid', `invalid.${this.name}.${data.field}`])\r\n      //     },\r\n      //     valid: (data) => {\r\n      //       this.emit(['valid', `valid.${this.name}.${data.field}`])\r\n      //     }\r\n      //   })\r\n      // } else {\r\n      //   // Store Event Relay\r\n      //   this.METADATA.join.pool('record.', {\r\n      //     create: this.METADATA.commonStoreEventHandler('record.create'),\r\n      //     update: this.METADATA.commonStoreEventHandler('record.update'),\r\n      //     remove: this.METADATA.commonStoreEventHandler('record.remove'),\r\n      //     invalid: (data) => {\r\n      //       this.emit('invalid', `invalid.${this.name}.${data.field}`)\r\n      //     },\r\n      //     valid: (data) => {\r\n      //       this.emit('valid', `valid.${this.name}.${data.field}`)\r\n      //     }\r\n      //   })\r\n      }\r\n    }\r\n\r\n    // Event handling for nested models.\r\n    this.METADATA.commonModelEventHandler = (type) => {\r\n      const me = this\r\n\r\n      return function (change) {\r\n        me.METADATA.commitPayload({\r\n          field: `${me.name}.${change.field}`,\r\n          old: NGN.coalesce(change.old),\r\n          new: NGN.coalesce(change.new),\r\n          join: true,\r\n          originalEvent: {\r\n            event: this.event,\r\n            record: me.METADATA.record\r\n          }\r\n        })\r\n      }\r\n    }\r\n\r\n    // Event handling for nested stores.\r\n    this.METADATA.commonStoreEventHandler = (type) => {\r\n      const me = this\r\n\r\n      return function (record, change) {\r\n        let old = change ? NGN.coalesce(change.old) : me.data\r\n\r\n        if (this.event === 'record.create') {\r\n          old.pop()\r\n        } else if (this.event === 'record.delete') {\r\n          old.push(record.data)\r\n        }\r\n\r\n        me.METADATA.commitPayload({\r\n          field: me.name + (change ? `.${change.field}` : ''),\r\n          old: change ? NGN.coalesce(change.old) : old,\r\n          new: change ? NGN.coalesce(change.new) : me.data,\r\n          join: true,\r\n          originalEvent: {\r\n            event: this.event,\r\n            record: record\r\n          }\r\n        })\r\n      }\r\n    }\r\n\r\n    // const commitPayload = this.METADATA.commitPayload\r\n    //\r\n    // this.METADATA.commitPayload = (payload) => {\r\n    //   console.log('HERE')\r\n    //   commitPayload(...arguments)\r\n    // }\r\n\r\n    /**\r\n     * @cfg join {NGN.DATA.Store|NGN.DATA.Model[]}\r\n     * A relationship to another model/store is defined by a join.\r\n     * The join may be a data store or data model. It is also possible\r\n     * to specify a collection.\r\n     *\r\n     * For example, a join may be defined as:\r\n     *\r\n     * ```js\r\n     * // Use of a model\r\n     * let RelationshipField = new NGN.DATA.Relationship({\r\n     *   record: new NGN.DATA.Model(...)\r\n     * })\r\n     *\r\n     * // Use of a model collection\r\n     * let RelationshipField = new NGN.DATA.Relationship({\r\n     *   record: [new NGN.DATA.Model(...)]\r\n     * })\r\n     *\r\n     * // Use of a store\r\n     * let RelationshipField = new NGN.DATA.Relationship({\r\n     *   record: new NGN.DATA.Store(...)\r\n     * })\r\n     * ```\r\n     *\r\n     * A store and a model collection are both a group of models,\r\n     * Internally, model collections are converted to data stores.\r\n     *\r\n     * By supporting all three formats, it is possible to create complex\r\n     * data models, such as:\r\n     *\r\n     * ```js\r\n     * let Pet = new NGN.DATA.Model(...)\r\n     * let Kid = new NGN.DATA.Model(...)\r\n     * let Kids = new NGN.DATA.Store({\r\n     *   model: Kid\r\n     * })\r\n     *\r\n     * let Person = new NGN.DATA.Model({\r\n     *   fields: {\r\n     *     dateOfBirth: Date,\r\n     *     spouse: Person,  // <== Join a Model\r\n     *     kids: Kids,      // <== Join a Store\r\n     *     pets: [Pet]      // <== Join a Collection\r\n     *   }\r\n     * })\r\n     * ```\r\n     *\r\n     * The `pets` field contains a \"collection\". This shorthand notation is used\r\n     * to help understand real data relationships. In this case, it is easy to\r\n     * infer that a person may have zero or more pets.\r\n     */\r\n    this.value = NGN.coalesce(cfg.join)\r\n    this.METADATA.AUDITABLE = false\r\n    this.auditable = NGN.coalesce(cfg.audit, false)\r\n  }\r\n\r\n  /**\r\n   * @property {string} manner\r\n   * The manner of relationship. This can be one of 3 values: `store`\r\n   * (NGN.DATA.Store), `model` (NGN.DATA.Model), or `collection`. A collection\r\n   * is a special configuration shortcut used to represent a new store of models.\r\n   * ```math\r\n   * E = mc^2\r\n   * ```\r\n   * ```graph\r\n   * graph LR\r\n   * a-->b\r\n   * ```\r\n   * For example, a model may be defined as:\r\n   *\r\n   * ```js\r\n   * let Pet = new NGN.DATA.Model({\r\n   *   fields: {\r\n   *     name: String,\r\n   *     animalType: String\r\n   *   }\r\n   * })\r\n   *\r\n   * let Person = new NGN.DATA.Model({\r\n   *   fields: {\r\n   *     dateOfBirth: Date\r\n   *   },\r\n   *   relationships: {\r\n   *     pets: [Pet]        // <== Collection\r\n   *   }\r\n   * })\r\n   * ```\r\n   */\r\n  get manner () {\r\n    return NGN.coalesce(this.METADATA.manner, 'unknown')\r\n  }\r\n\r\n  get value () {\r\n    return this.METADATA.join\r\n  }\r\n\r\n  // Override the default value setter\r\n  set value (value) {\r\n    // Short-circuit if the value hasn't changed.\r\n    let currentValue = this.METADATA.join\r\n\r\n    if (currentValue === value) {\r\n      return\r\n    }\r\n\r\n    let type = NGN.typeof(value)\r\n\r\n    if (type === 'array') {\r\n      if (value.length !== 1) {\r\n        throw new Error(`${this.METADATA.name} cannot refer to an empty data store/model collection. A record must be provided.`)\r\n      }\r\n\r\n      this.METADATA.manner = 'store'\r\n      value = new NGN.DATA.Store({\r\n        model: value[0]\r\n      })\r\n    } else if (['model', 'store'].indexOf(type) >= 0) {\r\n      this.METADATA.manner = type\r\n    } else {\r\n      NGN.ERROR(`The \"${this.METADATA.name}\" relationship has an invalid record type. Only instances of NGN.DATA.Store, NGN.DATA.Model, or [NGN.DATA.Model] are supported.\" .`)\r\n      throw new InvalidConfigurationError(`Invalid record configuration for \"${this.METADATA.name}\" field.`)\r\n    }\r\n\r\n    if (this.manner === 'unknown') {\r\n      throw new Error('Cannot set a relationship field to anything other than an NGN.DATA.Store, NGN.DATA.Model, or an array of NGN.DATA.Model collections. (Unknown manner of relationship)')\r\n    }\r\n\r\n    this.METADATA.join = type === 'model' ? new value() : value // eslint-disable-line new-cap\r\n    this.auditable = this.METADATA.AUDITABLE\r\n    this.METADATA.applyMonitor()\r\n\r\n    // Notify listeners of change\r\n    if (typeof currentValue !== 'symbol') {\r\n      this.emit('update', {\r\n        old: currentValue,\r\n        new: value\r\n      })\r\n    }\r\n  }\r\n\r\n  set auditable (value) {\r\n    value = NGN.forceBoolean(value)\r\n\r\n    if (value !== this.METADATA.AUDITABLE) {\r\n      this.METADATA.AUDITABLE = value\r\n      this.METADATA.join.auditable = value\r\n    }\r\n  }\r\n\r\n  // Override the default undo\r\n  undo () {\r\n    if (this.METADATA.manner === 'model') {\r\n      this.METADATA.join.undo(...arguments)\r\n    }\r\n  }\r\n\r\n  redo () {\r\n    if (this.METADATA.manner === 'model') {\r\n      this.METADATA.join.redo(...arguments)\r\n    }\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 52,
+    "column": 15
+  },
+  "end": {
+    "line": 333,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/field/Relationship.js",
+  "extends": "DataField",
+  "configuration": {
+    "join": {
+      "type": "property",
+      "label": "join",
+      "description": "{NGN.DATA.Store|NGN.DATA.Model[]}\nA relationship to another model/store is defined by a join.\nThe join may be a data store or data model. It is also possible\nto specify a collection.\n\nFor example, a join may be defined as:\n\n```js\n// Use of a model\nlet RelationshipField = new NGN.DATA.Relationship({\nrecord: new NGN.DATA.Model\n})\n\n// Use of a model collection\nlet RelationshipField = new NGN.DATA.Relationship({\nrecord: [new NGN.DATA.Model(...)]\n})\n\n// Use of a store\nlet RelationshipField = new NGN.DATA.Relationship({\nrecord: new NGN.DATA.Store(...)\n})\n```\n\nA store and a model collection are both a group of models,\nInternally, model collections are converted to data stores.\n\nBy supporting all three formats, it is possible to create complex\ndata models, such as:\n\n```js\nlet Pet = new NGN.DATA.Model(...)\nlet Kid = new NGN.DATA.Model(...)\nlet Kids = new NGN.DATA.Store({\nmodel: Kid\n})\n\nlet Person = new NGN.DATA.Model({\nfields: {\ndateOfBirth: Date,\nspouse: Person,  // <== Join a Model\nkids: Kids,      // <== Join a Store\npets: [Pet]      // <== Join a Collection\n}\n})\n```\n\nThe `pets` field contains a \"collection\". This shorthand notation is used\nto help understand real data relationships. In this case, it is easy to\ninfer that a person may have zero or more pets.",
+      "code": "this.value = NGN.coalesce(cfg.join)",
+      "start": {
+        "line": 223,
+        "column": 9
+      },
+      "end": {
+        "line": 223,
+        "column": 14
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "any",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": false
+    }
+  },
+  "properties": {
+    "identifier": {
+      "type": "property",
+      "label": "identifier",
+      "description": null,
+      "code": "cfg.identifier = false",
+      "start": {
+        "line": 72,
+        "column": 8
+      },
+      "end": {
+        "line": 72,
+        "column": 18
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "fieldType": {
+      "type": "property",
+      "label": "fieldType",
+      "description": null,
+      "code": "this.METADATA.fieldType = 'join'",
+      "start": {
+        "line": 75,
+        "column": 18
+      },
+      "end": {
+        "line": 75,
+        "column": 27
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "applyMonitor": {
+      "type": "property",
+      "label": "applyMonitor",
+      "description": null,
+      "code": "this.METADATA.applyMonitor = () => {\r\n      if (this.METADATA.manner === 'model') {\r\n        // Model Event Relay\r\n        this.METADATA.join.pool('field.', {\r\n          create: this.METADATA.commonModelEventHandler('field.create'),\r\n          update: this.METADATA.commonModelEventHandler('field.update'),\r\n          remove: this.METADATA.commonModelEventHandler('field.remove'),\r\n          invalid: (data) => {\r\n            this.emit(['invalid', `invalid.${this.METADATA.name}.${data.field}`])\r\n          },\r\n          valid: (data) => {\r\n            this.emit(['valid', `valid.${this.METADATA.name}.${data.field}`])\r\n          }\r\n        })\r\n      //   this.METADATA.join.pool('field.', {\r\n      //     create: this.METADATA.commonModelEventHandler('field.create'),\r\n      //     update: this.METADATA.commonModelEventHandler('field.update'),\r\n      //     remove: this.METADATA.commonModelEventHandler('field.remove'),\r\n      //     invalid: (data) => {\r\n      //       this.emit(['invalid', `invalid.${this.name}.${data.field}`])\r\n      //     },\r\n      //     valid: (data) => {\r\n      //       this.emit(['valid', `valid.${this.name}.${data.field}`])\r\n      //     }\r\n      //   })\r\n      // } else {\r\n      //   // Store Event Relay\r\n      //   this.METADATA.join.pool('record.', {\r\n      //     create: this.METADATA.commonStoreEventHandler('record.create'),\r\n      //     update: this.METADATA.commonStoreEventHandler('record.update'),\r\n      //     remove: this.METADATA.commonStoreEventHandler('record.remove'),\r\n      //     invalid: (data) => {\r\n      //       this.emit('invalid', `invalid.${this.name}.${data.field}`)\r\n      //     },\r\n      //     valid: (data) => {\r\n      //       this.emit('valid', `valid.${this.name}.${data.field}`)\r\n      //     }\r\n      //   })\r\n      }\r\n    }",
+      "start": {
+        "line": 79,
+        "column": 18
+      },
+      "end": {
+        "line": 79,
+        "column": 30
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "commonModelEventHandler": {
+      "type": "property",
+      "label": "commonModelEventHandler",
+      "description": null,
+      "code": "this.METADATA.commonModelEventHandler = (type) => {\r\n      const me = this\r\n\r\n      return function (change) {\r\n        me.METADATA.commitPayload({\r\n          field: `${me.name}.${change.field}`,\r\n          old: NGN.coalesce(change.old),\r\n          new: NGN.coalesce(change.new),\r\n          join: true,\r\n          originalEvent: {\r\n            event: this.event,\r\n            record: me.METADATA.record\r\n          }\r\n        })\r\n      }\r\n    }",
+      "start": {
+        "line": 121,
+        "column": 18
+      },
+      "end": {
+        "line": 121,
+        "column": 41
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "commonStoreEventHandler": {
+      "type": "property",
+      "label": "commonStoreEventHandler",
+      "description": null,
+      "code": "this.METADATA.commonStoreEventHandler = (type) => {\r\n      const me = this\r\n\r\n      return function (record, change) {\r\n        let old = change ? NGN.coalesce(change.old) : me.data\r\n\r\n        if (this.event === 'record.create') {\r\n          old.pop()\r\n        } else if (this.event === 'record.delete') {\r\n          old.push(record.data)\r\n        }\r\n\r\n        me.METADATA.commitPayload({\r\n          field: me.name + (change ? `.${change.field}` : ''),\r\n          old: change ? NGN.coalesce(change.old) : old,\r\n          new: change ? NGN.coalesce(change.new) : me.data,\r\n          join: true,\r\n          originalEvent: {\r\n            event: this.event,\r\n            record: record\r\n          }\r\n        })\r\n      }\r\n    }",
+      "start": {
+        "line": 139,
+        "column": 18
+      },
+      "end": {
+        "line": 139,
+        "column": 41
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "AUDITABLE": {
+      "type": "property",
+      "label": "AUDITABLE",
+      "description": null,
+      "code": "this.METADATA.AUDITABLE = false",
+      "start": {
+        "line": 224,
+        "column": 18
+      },
+      "end": {
+        "line": 224,
+        "column": 27
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "auditable": {
+      "type": "property",
+      "label": "auditable",
+      "description": null,
+      "code": "set auditable (value) {\r\n    value = NGN.forceBoolean(value)\r\n\r\n    if (value !== this.METADATA.AUDITABLE) {\r\n      this.METADATA.AUDITABLE = value\r\n      this.METADATA.join.auditable = value\r\n    }\r\n  }",
+      "start": {
+        "line": 312,
+        "column": 2
+      },
+      "end": {
+        "line": 319,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "manner": {
+      "type": "property",
+      "label": "manner",
+      "description": null,
+      "code": "get manner () {\r\n    return NGN.coalesce(this.METADATA.manner, 'unknown')\r\n  }",
+      "start": {
+        "line": 260,
+        "column": 2
+      },
+      "end": {
+        "line": 262,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "value": {
+      "type": "property",
+      "label": "value",
+      "description": null,
+      "code": "set value (value) {\r\n    // Short-circuit if the value hasn't changed.\r\n    let currentValue = this.METADATA.join\r\n\r\n    if (currentValue === value) {\r\n      return\r\n    }\r\n\r\n    let type = NGN.typeof(value)\r\n\r\n    if (type === 'array') {\r\n      if (value.length !== 1) {\r\n        throw new Error(`${this.METADATA.name} cannot refer to an empty data store/model collection. A record must be provided.`)\r\n      }\r\n\r\n      this.METADATA.manner = 'store'\r\n      value = new NGN.DATA.Store({\r\n        model: value[0]\r\n      })\r\n    } else if (['model', 'store'].indexOf(type) >= 0) {\r\n      this.METADATA.manner = type\r\n    } else {\r\n      NGN.ERROR(`The \"${this.METADATA.name}\" relationship has an invalid record type. Only instances of NGN.DATA.Store, NGN.DATA.Model, or [NGN.DATA.Model] are supported.\" .`)\r\n      throw new InvalidConfigurationError(`Invalid record configuration for \"${this.METADATA.name}\" field.`)\r\n    }\r\n\r\n    if (this.manner === 'unknown') {\r\n      throw new Error('Cannot set a relationship field to anything other than an NGN.DATA.Store, NGN.DATA.Model, or an array of NGN.DATA.Model collections. (Unknown manner of relationship)')\r\n    }\r\n\r\n    this.METADATA.join = type === 'model' ? new value() : value // eslint-disable-line new-cap\r\n    this.auditable = this.METADATA.AUDITABLE\r\n    this.METADATA.applyMonitor()\r\n\r\n    // Notify listeners of change\r\n    if (typeof currentValue !== 'symbol') {\r\n      this.emit('update', {\r\n        old: currentValue,\r\n        new: value\r\n      })\r\n    }\r\n  }",
+      "start": {
+        "line": 269,
+        "column": 2
+      },
+      "end": {
+        "line": 310,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor (cfg = {}) {\r\n    let type = NGN.typeof(cfg.join)\r\n\r\n    // Assure valid configuration\r\n    if (!cfg.join) {\r\n      throw new InvalidConfigurationError('Missing \"join\" configuration property.')\r\n    } else if (\r\n      ['model', 'store'].indexOf(type) < 0 &&\r\n      (\r\n        type !== 'array' ||\r\n        NGN.typeof(cfg.join[0]) !== 'model'\r\n      )\r\n    ) {\r\n      throw new InvalidConfigurationError(`The join specified is not a valid NGN.DATA.Model, NGN.DATA.Store, or collection. It is a ${NGN.typeof(cfg.join)}\"`)\r\n    }\r\n\r\n    // Create optional cardinality validations\r\n\r\n    // Initialize\r\n    cfg.identifier = false\r\n    super(cfg)\r\n\r\n    this.METADATA.fieldType = 'join'\r\n    this.METADATA.join = Symbol('relationship')\r\n\r\n    // Apply event monitoring to the #record.\r\n    this.METADATA.applyMonitor = () => {\r\n      if (this.METADATA.manner === 'model') {\r\n        // Model Event Relay\r\n        this.METADATA.join.pool('field.', {\r\n          create: this.METADATA.commonModelEventHandler('field.create'),\r\n          update: this.METADATA.commonModelEventHandler('field.update'),\r\n          remove: this.METADATA.commonModelEventHandler('field.remove'),\r\n          invalid: (data) => {\r\n            this.emit(['invalid', `invalid.${this.METADATA.name}.${data.field}`])\r\n          },\r\n          valid: (data) => {\r\n            this.emit(['valid', `valid.${this.METADATA.name}.${data.field}`])\r\n          }\r\n        })\r\n      //   this.METADATA.join.pool('field.', {\r\n      //     create: this.METADATA.commonModelEventHandler('field.create'),\r\n      //     update: this.METADATA.commonModelEventHandler('field.update'),\r\n      //     remove: this.METADATA.commonModelEventHandler('field.remove'),\r\n      //     invalid: (data) => {\r\n      //       this.emit(['invalid', `invalid.${this.name}.${data.field}`])\r\n      //     },\r\n      //     valid: (data) => {\r\n      //       this.emit(['valid', `valid.${this.name}.${data.field}`])\r\n      //     }\r\n      //   })\r\n      // } else {\r\n      //   // Store Event Relay\r\n      //   this.METADATA.join.pool('record.', {\r\n      //     create: this.METADATA.commonStoreEventHandler('record.create'),\r\n      //     update: this.METADATA.commonStoreEventHandler('record.update'),\r\n      //     remove: this.METADATA.commonStoreEventHandler('record.remove'),\r\n      //     invalid: (data) => {\r\n      //       this.emit('invalid', `invalid.${this.name}.${data.field}`)\r\n      //     },\r\n      //     valid: (data) => {\r\n      //       this.emit('valid', `valid.${this.name}.${data.field}`)\r\n      //     }\r\n      //   })\r\n      }\r\n    }\r\n\r\n    // Event handling for nested models.\r\n    this.METADATA.commonModelEventHandler = (type) => {\r\n      const me = this\r\n\r\n      return function (change) {\r\n        me.METADATA.commitPayload({\r\n          field: `${me.name}.${change.field}`,\r\n          old: NGN.coalesce(change.old),\r\n          new: NGN.coalesce(change.new),\r\n          join: true,\r\n          originalEvent: {\r\n            event: this.event,\r\n            record: me.METADATA.record\r\n          }\r\n        })\r\n      }\r\n    }\r\n\r\n    // Event handling for nested stores.\r\n    this.METADATA.commonStoreEventHandler = (type) => {\r\n      const me = this\r\n\r\n      return function (record, change) {\r\n        let old = change ? NGN.coalesce(change.old) : me.data\r\n\r\n        if (this.event === 'record.create') {\r\n          old.pop()\r\n        } else if (this.event === 'record.delete') {\r\n          old.push(record.data)\r\n        }\r\n\r\n        me.METADATA.commitPayload({\r\n          field: me.name + (change ? `.${change.field}` : ''),\r\n          old: change ? NGN.coalesce(change.old) : old,\r\n          new: change ? NGN.coalesce(change.new) : me.data,\r\n          join: true,\r\n          originalEvent: {\r\n            event: this.event,\r\n            record: record\r\n          }\r\n        })\r\n      }\r\n    }\r\n\r\n    // const commitPayload = this.METADATA.commitPayload\r\n    //\r\n    // this.METADATA.commitPayload = (payload) => {\r\n    //   console.log('HERE')\r\n    //   commitPayload(...arguments)\r\n    // }\r\n\r\n    /**\r\n     * @cfg join {NGN.DATA.Store|NGN.DATA.Model[]}\r\n     * A relationship to another model/store is defined by a join.\r\n     * The join may be a data store or data model. It is also possible\r\n     * to specify a collection.\r\n     *\r\n     * For example, a join may be defined as:\r\n     *\r\n     * ```js\r\n     * // Use of a model\r\n     * let RelationshipField = new NGN.DATA.Relationship({\r\n     *   record: new NGN.DATA.Model(...)\r\n     * })\r\n     *\r\n     * // Use of a model collection\r\n     * let RelationshipField = new NGN.DATA.Relationship({\r\n     *   record: [new NGN.DATA.Model(...)]\r\n     * })\r\n     *\r\n     * // Use of a store\r\n     * let RelationshipField = new NGN.DATA.Relationship({\r\n     *   record: new NGN.DATA.Store(...)\r\n     * })\r\n     * ```\r\n     *\r\n     * A store and a model collection are both a group of models,\r\n     * Internally, model collections are converted to data stores.\r\n     *\r\n     * By supporting all three formats, it is possible to create complex\r\n     * data models, such as:\r\n     *\r\n     * ```js\r\n     * let Pet = new NGN.DATA.Model(...)\r\n     * let Kid = new NGN.DATA.Model(...)\r\n     * let Kids = new NGN.DATA.Store({\r\n     *   model: Kid\r\n     * })\r\n     *\r\n     * let Person = new NGN.DATA.Model({\r\n     *   fields: {\r\n     *     dateOfBirth: Date,\r\n     *     spouse: Person,  // <== Join a Model\r\n     *     kids: Kids,      // <== Join a Store\r\n     *     pets: [Pet]      // <== Join a Collection\r\n     *   }\r\n     * })\r\n     * ```\r\n     *\r\n     * The `pets` field contains a \"collection\". This shorthand notation is used\r\n     * to help understand real data relationships. In this case, it is easy to\r\n     * infer that a person may have zero or more pets.\r\n     */\r\n    this.value = NGN.coalesce(cfg.join)\r\n    this.METADATA.AUDITABLE = false\r\n    this.auditable = NGN.coalesce(cfg.audit, false)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 53,
+        "column": 2
+      },
+      "end": {
+        "line": 226,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "cfg": {
+          "type": "argument",
+          "label": "cfg",
+          "description": null,
+          "code": "cfg = {}",
+          "start": {
+            "line": 53,
+            "column": 15
+          },
+          "end": {
+            "line": 53,
+            "column": 23
+          },
+          "flags": [],
+          "authors": [],
+          "default": "{}",
+          "datatype": "object",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "undo": {
+      "type": "method",
+      "label": "undo",
+      "description": null,
+      "code": "undo () {\r\n    if (this.METADATA.manner === 'model') {\r\n      this.METADATA.join.undo(...arguments)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 322,
+        "column": 2
+      },
+      "end": {
+        "line": 326,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "redo": {
+      "type": "method",
+      "label": "redo",
+      "description": null,
+      "code": "redo () {\r\n    if (this.METADATA.manner === 'model') {\r\n      this.METADATA.join.redo(...arguments)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 328,
+        "column": 2
+      },
+      "end": {
+        "line": 332,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

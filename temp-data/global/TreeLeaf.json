@@ -1,0 +1,208 @@
+{
+  "type": "class",
+  "label": "TreeLeaf",
+  "description": null,
+  "code": "class TreeLeaf {\r\n  /**\r\n   * Constructs a new Leaf containing a value.\r\n   * @param {NGNTreeNode} parent\r\n   * @param {number} key\r\n   * @param {any} value\r\n   */\r\n  constructor (parent, key, value) {\r\n    Object.defineProperties(this, {\r\n      parent: NGN.private(parent),\r\n      key: NGN.private(key),\r\n      value: NGN.private(value)\r\n    })\r\n  }\r\n\r\n  toString () {\r\n    return this.key.toString()\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 390,
+    "column": 0
+  },
+  "end": {
+    "line": 408,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/index/BTree.js",
+  "extends": null,
+  "configuration": {},
+  "properties": {
+    "parent": {
+      "type": "property",
+      "label": "parent",
+      "description": null,
+      "code": "parent: NGN.private(parent)",
+      "start": {
+        "line": 399,
+        "column": 6
+      },
+      "end": {
+        "line": 399,
+        "column": 33
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "key": {
+      "type": "property",
+      "label": "key",
+      "description": null,
+      "code": "key: NGN.private(key)",
+      "start": {
+        "line": 400,
+        "column": 6
+      },
+      "end": {
+        "line": 400,
+        "column": 27
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "value": {
+      "type": "property",
+      "label": "value",
+      "description": null,
+      "code": "value: NGN.private(value)",
+      "start": {
+        "line": 401,
+        "column": 6
+      },
+      "end": {
+        "line": 401,
+        "column": 31
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": "Constructs a new Leaf containing a value.",
+      "code": "constructor (parent, key, value) {\r\n    Object.defineProperties(this, {\r\n      parent: NGN.private(parent),\r\n      key: NGN.private(key),\r\n      value: NGN.private(value)\r\n    })\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 397,
+        "column": 2
+      },
+      "end": {
+        "line": 403,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "parent": {
+          "type": "argument",
+          "label": "parent",
+          "description": "",
+          "code": "parent",
+          "start": {
+            "line": 397,
+            "column": 15
+          },
+          "end": {
+            "line": 397,
+            "column": 21
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngntreenode",
+          "required": true,
+          "enum": null
+        },
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": "",
+          "code": "key",
+          "start": {
+            "line": 397,
+            "column": 23
+          },
+          "end": {
+            "line": 397,
+            "column": 26
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        },
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "",
+          "code": "value",
+          "start": {
+            "line": 397,
+            "column": 28
+          },
+          "end": {
+            "line": 397,
+            "column": 33
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "toString": {
+      "type": "method",
+      "label": "toString",
+      "description": null,
+      "code": "toString () {\r\n    return this.key.toString()\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 405,
+        "column": 2
+      },
+      "end": {
+        "line": 407,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

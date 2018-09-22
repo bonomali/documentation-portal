@@ -1,0 +1,302 @@
+{
+  "type": "class",
+  "label": "NGN.DATA.FieldMap",
+  "description": "A reference to the inversed data map.",
+  "code": "class NGNDataFieldMap { // eslint-disable-line\r\n  constructor (cfg = {}) {\r\n    Object.defineProperties(this, {\r\n      originalSource: NGN.privateconst(cfg),\r\n      sourceMap: NGN.private(null),\r\n      reverseMap: NGN.private(null),\r\n      applyData: NGN.privateconst((map = 'map', data) => {\r\n        if (NGN.typeof(data) !== 'object') {\r\n          return data\r\n        }\r\n\r\n        let keys = Object.keys(data)\r\n        map = map === 'map' ? this.inverse : this.map\r\n\r\n        for (let i = 0; i < keys.length; i++) {\r\n          if (map.hasOwnProperty(keys[i])) {\r\n            data[map[keys[i]]] = data[keys[i]]\r\n            delete data[keys[i]]\r\n          }\r\n        }\r\n\r\n        return data\r\n      })\r\n    })\r\n  }\r\n\r\n  /**\r\n   * @property {object} map\r\n   * A reference to the data mapping object.\r\n   */\r\n  get map () {\r\n    if (this.sourceMap === null) {\r\n      let keys = Object.keys(this.originalSource)\r\n\r\n      this.sourceMap = {}\r\n\r\n      for (let i = 0; i < keys.length; i++) {\r\n        if (NGN.typeof(keys[i]) === 'string' && NGN.typeof(this.originalSource[keys[i]]) === 'string') {\r\n          this.sourceMap[keys[i]] = this.originalSource[keys[i]]\r\n        }\r\n      }\r\n    }\r\n\r\n    return this.sourceMap\r\n  }\r\n\r\n  /**\r\n   * @property {object} inverse\r\n   * A reference to the inversed data map.\r\n   */\r\n  get inverse () {\r\n    if (this.reverseMap === null) {\r\n      let keys = Object.keys(this.originalSource)\r\n\r\n      this.reverseMap = {}\r\n\r\n      for (let i = 0; i < keys.length; i++) {\r\n        if (NGN.typeof(keys[i]) === 'string' && NGN.typeof(this.originalSource[keys[i]]) === 'string') {\r\n          this.reverseMap[this.originalSource[keys[i]]] = keys[i]\r\n        }\r\n      }\r\n    }\r\n\r\n    return this.reverseMap\r\n  }\r\n\r\n  /**\r\n   * Apply the map to an object.\r\n   * @param  {object} data\r\n   * @return {object}\r\n   */\r\n  applyMap (data) {\r\n    return this.applyData('map', data)\r\n  }\r\n\r\n  /**\r\n   * Apply the inversed map to an object.\r\n   * @param  {object} data\r\n   * @return {object}\r\n   */\r\n  applyInverseMap (data) {\r\n    return this.applyData('reverse', data)\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 70,
+    "column": 15
+  },
+  "end": {
+    "line": 153,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/field/FieldMap.js",
+  "extends": null,
+  "configuration": {},
+  "properties": {
+    "originalSource": {
+      "type": "property",
+      "label": "originalSource",
+      "description": null,
+      "code": "originalSource: NGN.privateconst(cfg)",
+      "start": {
+        "line": 73,
+        "column": 6
+      },
+      "end": {
+        "line": 73,
+        "column": 43
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "sourceMap": {
+      "type": "property",
+      "label": "sourceMap",
+      "description": null,
+      "code": "sourceMap: NGN.private(null)",
+      "start": {
+        "line": 74,
+        "column": 6
+      },
+      "end": {
+        "line": 74,
+        "column": 34
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "reverseMap": {
+      "type": "property",
+      "label": "reverseMap",
+      "description": null,
+      "code": "reverseMap: NGN.private(null)",
+      "start": {
+        "line": 75,
+        "column": 6
+      },
+      "end": {
+        "line": 75,
+        "column": 35
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "applyData": {
+      "type": "property",
+      "label": "applyData",
+      "description": null,
+      "code": "applyData: NGN.privateconst((map = 'map', data) => {\r\n        if (NGN.typeof(data) !== 'object') {\r\n          return data\r\n        }\r\n\r\n        let keys = Object.keys(data)\r\n        map = map === 'map' ? this.inverse : this.map\r\n\r\n        for (let i = 0; i < keys.length; i++) {\r\n          if (map.hasOwnProperty(keys[i])) {\r\n            data[map[keys[i]]] = data[keys[i]]\r\n            delete data[keys[i]]\r\n          }\r\n        }\r\n\r\n        return data\r\n      })",
+      "start": {
+        "line": 76,
+        "column": 6
+      },
+      "end": {
+        "line": 92,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "map": {
+      "type": "property",
+      "label": "map",
+      "description": null,
+      "code": "get map () {\r\n    if (this.sourceMap === null) {\r\n      let keys = Object.keys(this.originalSource)\r\n\r\n      this.sourceMap = {}\r\n\r\n      for (let i = 0; i < keys.length; i++) {\r\n        if (NGN.typeof(keys[i]) === 'string' && NGN.typeof(this.originalSource[keys[i]]) === 'string') {\r\n          this.sourceMap[keys[i]] = this.originalSource[keys[i]]\r\n        }\r\n      }\r\n    }\r\n\r\n    return this.sourceMap\r\n  }",
+      "start": {
+        "line": 100,
+        "column": 2
+      },
+      "end": {
+        "line": 114,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "inverse": {
+      "type": "property",
+      "label": "inverse",
+      "description": null,
+      "code": "get inverse () {\r\n    if (this.reverseMap === null) {\r\n      let keys = Object.keys(this.originalSource)\r\n\r\n      this.reverseMap = {}\r\n\r\n      for (let i = 0; i < keys.length; i++) {\r\n        if (NGN.typeof(keys[i]) === 'string' && NGN.typeof(this.originalSource[keys[i]]) === 'string') {\r\n          this.reverseMap[this.originalSource[keys[i]]] = keys[i]\r\n        }\r\n      }\r\n    }\r\n\r\n    return this.reverseMap\r\n  }",
+      "start": {
+        "line": 120,
+        "column": 2
+      },
+      "end": {
+        "line": 134,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor (cfg = {}) {\r\n    Object.defineProperties(this, {\r\n      originalSource: NGN.privateconst(cfg),\r\n      sourceMap: NGN.private(null),\r\n      reverseMap: NGN.private(null),\r\n      applyData: NGN.privateconst((map = 'map', data) => {\r\n        if (NGN.typeof(data) !== 'object') {\r\n          return data\r\n        }\r\n\r\n        let keys = Object.keys(data)\r\n        map = map === 'map' ? this.inverse : this.map\r\n\r\n        for (let i = 0; i < keys.length; i++) {\r\n          if (map.hasOwnProperty(keys[i])) {\r\n            data[map[keys[i]]] = data[keys[i]]\r\n            delete data[keys[i]]\r\n          }\r\n        }\r\n\r\n        return data\r\n      })\r\n    })\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 71,
+        "column": 2
+      },
+      "end": {
+        "line": 94,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "cfg": {
+          "type": "argument",
+          "label": "cfg",
+          "description": null,
+          "code": "cfg = {}",
+          "start": {
+            "line": 71,
+            "column": 15
+          },
+          "end": {
+            "line": 71,
+            "column": 23
+          },
+          "flags": [],
+          "authors": [],
+          "default": "{}",
+          "datatype": "object",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "applyMap": {
+      "type": "method",
+      "label": "applyMap",
+      "description": "Apply the map to an object.",
+      "code": "applyMap (data) {\r\n    return this.applyData('map', data)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 141,
+        "column": 2
+      },
+      "end": {
+        "line": 143,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "data": {
+          "type": "argument",
+          "label": "data",
+          "description": "",
+          "code": "data",
+          "start": {
+            "line": 141,
+            "column": 12
+          },
+          "end": {
+            "line": 141,
+            "column": 16
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "object",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "object",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "applyInverseMap": {
+      "type": "method",
+      "label": "applyInverseMap",
+      "description": "Apply the inversed map to an object.",
+      "code": "applyInverseMap (data) {\r\n    return this.applyData('reverse', data)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 150,
+        "column": 2
+      },
+      "end": {
+        "line": 152,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "data": {
+          "type": "argument",
+          "label": "data",
+          "description": "",
+          "code": "data",
+          "start": {
+            "line": 150,
+            "column": 19
+          },
+          "end": {
+            "line": 150,
+            "column": 23
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "object",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "object",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

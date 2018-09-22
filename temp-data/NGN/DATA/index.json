@@ -1,0 +1,81 @@
+{
+  "type": "namespace",
+  "label": "DATA",
+  "description": null,
+  "code": null,
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 0,
+    "column": 0
+  },
+  "end": {
+    "line": 0,
+    "column": 0
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": null,
+  "properties": {},
+  "methods": {},
+  "namespaces": [],
+  "classes": [
+    {
+      "href": "/NGN/DATA/BTree.json",
+      "name": "NGN.DATA.BTree"
+    },
+    {
+      "href": "/NGN/DATA/Field.json",
+      "name": "NGN.DATA.Field"
+    },
+    {
+      "href": "/NGN/DATA/FieldMap.json",
+      "name": "NGN.DATA.FieldMap"
+    },
+    {
+      "href": "/NGN/DATA/Index_class.json",
+      "name": "NGN.DATA.Index"
+    },
+    {
+      "href": "/NGN/DATA/JSONSchema.json",
+      "name": "NGN.DATA.JSONSchema"
+    },
+    {
+      "href": "/NGN/DATA/Model.json",
+      "name": "NGN.DATA.Model"
+    },
+    {
+      "href": "/NGN/DATA/RangeRule.json",
+      "name": "NGN.DATA.RangeRule"
+    },
+    {
+      "href": "/NGN/DATA/Relationship.json",
+      "name": "NGN.DATA.Relationship"
+    },
+    {
+      "href": "/NGN/DATA/Representation.json",
+      "name": "NGN.DATA.Representation"
+    },
+    {
+      "href": "/NGN/DATA/Rule.json",
+      "name": "NGN.DATA.Rule"
+    },
+    {
+      "href": "/NGN/DATA/Store.json",
+      "name": "NGN.DATA.Store"
+    },
+    {
+      "href": "/NGN/DATA/TransactionLog.json",
+      "name": "NGN.DATA.TransactionLog"
+    },
+    {
+      "href": "/NGN/DATA/UTILITY.json",
+      "name": "NGN.DATA.UTILITY"
+    },
+    {
+      "href": "/NGN/DATA/VirtualField.json",
+      "name": "NGN.DATA.VirtualField"
+    }
+  ]
+}

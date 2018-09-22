@@ -1,0 +1,638 @@
+{
+  "type": "class",
+  "label": "TreeNode",
+  "description": "Inspired by btree.js (c) 2013 Daniel Wirtz <dcode\r\nReleased under the Apache License, Version 2.0\r\nsee: http://github.com/dcodeIO/btree.js for details.\r\n\nConverted to ECMASCript 2016 class syntax & modified to use\r\nNGN conventions. Separated code into multiple classes.\r\nCopyright (c) 2018, Ecor Ventures LLC.",
+  "code": "class TreeNode {\r\n  constructor (parent = null, leafs = [], nodes = [null]) {\r\n    Object.defineProperties(this, {\r\n      parent: NGN.private(parent),\r\n      leafs: NGN.private(leafs),\r\n      nodes: NGN.private(nodes),\r\n\r\n      METADATA: NGN.private({\r\n        order: null,\r\n        minOrder: null,\r\n\r\n        /**\r\n        * Compare two numbers\r\n        * @param  {number} firstNumber\r\n        * @param  {number} secondNumber\r\n        * @return {number}\r\n        * - Returns `-1` if first number is less than second.\r\n        * - Returns `0` if numbers are equal.\r\n        * - Returns `1` if first number is greater than second.\r\n        */\r\n        compare: (firstNumber, secondNumber) => {\r\n          return firstNumber < secondNumber ? -1 : (firstNumber > secondNumber ? 1 : 0)\r\n        }\r\n      })\r\n    })\r\n\r\n    // Associate leafs with parent\r\n    for (let i = 0; i < this.leafs.length; i++) {\r\n      this.leafs[i].parent = this\r\n      // Object.defineProperty(this.leafs[i], 'parent', NGN.get(() => this))\r\n    }\r\n\r\n    // Associate nodes with parent\r\n    for (let i = 0; i < this.nodes.length; i++) {\r\n      if (this.nodes[i] !== null) {\r\n        this.nodes[i].parent = this\r\n        // Object.defineProperty(this.nodes[i], 'parent', NGN.get(() => this))\r\n      }\r\n    }\r\n  }\r\n\r\n  /**\r\n  * Search for the node that contains the specified key\r\n  * @param  {any} key\r\n  * @return {TreeLeaf|TreeNode}\r\n  */\r\n  search (key) {\r\n    if (this.leafs.length > 0) {\r\n      let a = this.leafs[0]\r\n\r\n      if (this.METADATA.compare(a.key, key) === 0) {\r\n        return {\r\n          leaf: a,\r\n          index: 0\r\n        }\r\n      }\r\n\r\n      if (this.METADATA.compare(key, a.key) < 0) {\r\n        if (this.nodes[0] !== null) {\r\n          return this.nodes[0].search(key) // Left\r\n        }\r\n\r\n        return { node: this, index: 0 }\r\n      }\r\n\r\n      let i\r\n      for (i = 1; i < this.leafs.length; i++) {\r\n        let b = this.leafs[i]\r\n\r\n        if (this.METADATA.compare(b.key, key) === 0) {\r\n          return {\r\n            leaf: b,\r\n            index: i\r\n          }\r\n        }\r\n\r\n        if (this.METADATA.compare(key, b.key) < 0) {\r\n          if (this.nodes[i] !== null) {\r\n            return this.nodes[i].search(key) // Inner\r\n          }\r\n\r\n          return { node: this, index: i }\r\n        }\r\n\r\n        a = b\r\n      }\r\n\r\n      if (this.nodes[i] !== null) {\r\n        return this.nodes[i].search(key) // Right\r\n      }\r\n\r\n      return { node: this, index: i }\r\n    }\r\n\r\n    return { node: this, index: 0 }\r\n  }\r\n\r\n  /**\r\n  * Retrieve the value of a key.\r\n  * @param {number} key\r\n  * @returns {NGNTreeLeaf}\r\n  * Returns `undefined` if no leaf is found.\r\n  */\r\n  get (key) {\r\n    let result = this.search(key)\r\n    return result.leaf ? result.leaf.value : undefined\r\n  }\r\n\r\n  /**\r\n  * Insert a key/value pair into the node.\r\n  * @param {number} key\r\n  * @param {any} value\r\n  * @param {boolean} [overwrite=true]\r\n  * Overwrite existing values.\r\n  */\r\n  put (key, value, overwrite = true) {\r\n    let result = this.search(key)\r\n\r\n    // Key already exists\r\n    if (result.leaf) {\r\n      if (!overwrite) {\r\n        return\r\n      }\r\n\r\n      result.leaf.value = value\r\n      return\r\n    }\r\n\r\n    let node = result.node\r\n    let index = result.index\r\n\r\n    node.leafs.splice(index, 0, new TreeLeaf(node, key, value))\r\n    node.nodes.splice(index + 1, 0, null)\r\n\r\n    if (node.leafs.length > this.METADATA.order) {\r\n      node.split()\r\n    }\r\n  }\r\n\r\n  /**\r\n  * Delete key.\r\n  * @param {number} key\r\n  */\r\n  delete (key) {\r\n    var result = this.search(key)\r\n\r\n    if (!result.leaf) {\r\n      return\r\n    }\r\n\r\n    let leaf = result.leaf\r\n    let node = leaf.parent\r\n    let index = result.index\r\n    let left = node.nodes[index]\r\n\r\n    if (left === null) {\r\n      node.leafs.splice(index, 1)\r\n      node.nodes.splice(index, 1)\r\n      node.balance()\r\n    } else {\r\n      let max = left.leafs[left.leafs.length - 1]\r\n\r\n      left.delete(max.key)\r\n\r\n      max.parent = node\r\n\r\n      node.leafs.splice(index, 1, max)\r\n    }\r\n\r\n    return true\r\n  }\r\n\r\n  /**\r\n  * Balance the tree.\r\n  * @private\r\n  */\r\n  balance () {\r\n    if (this.parent instanceof Tree) {\r\n      // Root has a single child and no leafs\r\n      if (this.leafs.length === 0 && this.nodes[0] !== null) {\r\n        this.parent.root = this.nodes[0]\r\n        this.parent.root.parent = this.parent\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    if (this.leafs.length >= this.METADATA.minOrder) {\r\n      return\r\n    }\r\n\r\n    let index = this.parent.nodes.indexOf(this)\r\n    let left = index > 0 ? this.parent.nodes[index - 1] : null\r\n    let right = this.parent.nodes.length > index + 1 ? this.parent.nodes[index + 1] : null\r\n    let sep\r\n    let leaf\r\n    let rest\r\n\r\n    if (right !== null && right.leafs.length > this.METADATA.minOrder) {\r\n      // Append the parent separator\r\n      sep = this.parent.leafs[index]\r\n      sep.parent = this\r\n\r\n      this.leafs.push(sep)\r\n\r\n      // Replace blank with the first right leaf\r\n      leaf = right.leafs.shift()\r\n      leaf.parent = this.parent\r\n\r\n      this.parent.leafs[index] = leaf\r\n\r\n      // Append the right rest\r\n      rest = right.nodes.shift()\r\n\r\n      if (rest !== null) {\r\n        rest.parent = this\r\n      }\r\n\r\n      this.nodes.push(rest)\r\n    } else if (left !== null && left.leafs.length > this.METADATA.minOrder) {\r\n      // Prepend the parent seperator\r\n      sep = this.parent.leafs[index - 1]\r\n      sep.parent = this\r\n\r\n      this.leafs.unshift(sep)\r\n\r\n      // Replace the blank with the last left leaf\r\n      leaf = left.leafs.pop()\r\n      leaf.parent = this.parent\r\n\r\n      this.parent.leafs[index - 1] = leaf\r\n\r\n      // Prepend the left rest to this\r\n      rest = left.nodes.pop()\r\n\r\n      if (rest !== null) {\r\n        rest.parent = this\r\n      }\r\n\r\n      this.nodes.unshift(rest)\r\n    } else {\r\n      let subst\r\n\r\n      if (right !== null) {\r\n        // Combine this + seperator from the parent + right\r\n        sep = this.parent.leafs[index]\r\n        subst = new TreeNode(this.parent, this.leafs.concat([sep], right.leafs), this.nodes.concat(right.nodes))\r\n        subst.METADATA.order = this.METADATA.order\r\n        subst.METADATA.minOrder = this.METADATA.minOrder\r\n\r\n        // Remove the seperator from the parent\r\n        this.parent.leafs.splice(index, 1)\r\n\r\n        // And replace the nodes it seperated with subst\r\n        this.parent.nodes.splice(index, 2, subst)\r\n      } else if (left !== null) {\r\n        // Combine left + seperator from parent + this\r\n        sep = this.parent.leafs[index - 1]\r\n        subst = new TreeNode(\r\n          this.parent,\r\n          left.leafs.concat([sep], this.leafs),\r\n          left.nodes.concat(this.nodes)\r\n        )\r\n\r\n        subst.METADATA.minOrder = this.METADATA.minOrder\r\n        subst.METADATA.order = this.METADATA.order\r\n\r\n        // Remove the seperator from the parent\r\n        this.parent.leafs.splice(index - 1, 1)\r\n\r\n        // Replace seperated nodes with subst\r\n        this.parent.nodes.splice(index - 1, 2, subst)\r\n      } else {\r\n        throw new Error(`Internal error: ${this.toString(true)} has neither a left nor a right sibling`)\r\n      }\r\n\r\n      this.parent.balance()\r\n    }\r\n  }\r\n\r\n  /**\r\n  * Split the node.\r\n  */\r\n  split () {\r\n    let index = Math.floor(this.leafs.length / 2)\r\n\r\n    if (this.parent instanceof Tree) {\r\n      this.nodes = [\r\n        new TreeNode(this, this.leafs.slice(0, index), this.nodes.slice(0, index + 1)),\r\n        new TreeNode(this, this.leafs.slice(index + 1), this.nodes.slice(index + 1))\r\n      ]\r\n\r\n      this.leafs = [this.leafs[index]]\r\n    } else {\r\n      let leaf = this.leafs[index]\r\n      let rest = new TreeNode(\r\n        this.parent,\r\n        this.leafs.slice(index + 1),\r\n        this.nodes.slice(index + 1)\r\n      )\r\n\r\n      this.leafs = this.leafs.slice(0, index)\r\n      this.nodes = this.nodes.slice(0, index + 1)\r\n\r\n      this.parent.unsplit(leaf, rest)\r\n    }\r\n  }\r\n\r\n  /**\r\n  * Unsplits a child.\r\n  * @param {NGNTreeLeaf} leaf\r\n  * @param {NGNTreeNode} rest\r\n  * @param {number} [order=52]\r\n  * @private\r\n  */\r\n  unsplit (leaf, rest) {\r\n    leaf.parent = this\r\n    rest.parent = this\r\n\r\n    let a = this.leafs[0]\r\n\r\n    if (this.METADATA.compare(leaf.key, a.key) < 0) {\r\n      this.leafs.unshift(leaf)\r\n      this.nodes.splice(1, 0, rest)\r\n    } else {\r\n      let i\r\n      for (i = 1; i < this.leafs.length; i++) {\r\n        let b = this.leafs[i]\r\n\r\n        if (this.METADATA.compare(leaf.key, b.key) < 0) {\r\n          this.leafs.splice(i, 0, leaf)\r\n          this.nodes.splice(i + 1, 0, rest)\r\n          break\r\n        }\r\n      }\r\n\r\n      if (i === this.leafs.length) {\r\n        this.leafs.push(leaf)\r\n        this.nodes.push(rest)\r\n      }\r\n    }\r\n\r\n    if (this.leafs.length > this.METADATA.order) {\r\n      this.split()\r\n    }\r\n  }\r\n\r\n  /**\r\n  * A string representation of the node.\r\n  * @param {boolean} [includeNodes=false]\r\n  * Include sub-nodes\r\n  * @returns {string}\r\n  * @private\r\n  */\r\n  toString (includeNodes = false) {\r\n    let value = []\r\n    let i\r\n\r\n    for (i = 0; i < this.leafs.length; i++) {\r\n      value.push(this.leafs[i].key)\r\n    }\r\n\r\n    let s = `[${value.toString()}]${(this.parent instanceof Tree ? ':*' : ':')}${this.parent}`\r\n\r\n    if (includeNodes) {\r\n      for (i = 0; i < this.nodes.length; i++) {\r\n        s += ` -> ${this.nodes[i]}`\r\n      }\r\n    }\r\n\r\n    return s\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 13,
+    "column": 0
+  },
+  "end": {
+    "line": 385,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/index/BTree.js",
+  "extends": null,
+  "configuration": {},
+  "properties": {
+    "parent": {
+      "type": "property",
+      "label": "parent",
+      "description": null,
+      "code": "parent: NGN.private(parent)",
+      "start": {
+        "line": 16,
+        "column": 6
+      },
+      "end": {
+        "line": 16,
+        "column": 33
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "leafs": {
+      "type": "property",
+      "label": "leafs",
+      "description": null,
+      "code": "leafs: NGN.private(leafs)",
+      "start": {
+        "line": 17,
+        "column": 6
+      },
+      "end": {
+        "line": 17,
+        "column": 31
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "nodes": {
+      "type": "property",
+      "label": "nodes",
+      "description": null,
+      "code": "nodes: NGN.private(nodes)",
+      "start": {
+        "line": 18,
+        "column": 6
+      },
+      "end": {
+        "line": 18,
+        "column": 31
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "METADATA": {
+      "type": "property",
+      "label": "METADATA",
+      "description": null,
+      "code": "METADATA: NGN.private({\r\n        order: null,\r\n        minOrder: null,\r\n\r\n        /**\r\n        * Compare two numbers\r\n        * @param  {number} firstNumber\r\n        * @param  {number} secondNumber\r\n        * @return {number}\r\n        * - Returns `-1` if first number is less than second.\r\n        * - Returns `0` if numbers are equal.\r\n        * - Returns `1` if first number is greater than second.\r\n        */\r\n        compare: (firstNumber, secondNumber) => {\r\n          return firstNumber < secondNumber ? -1 : (firstNumber > secondNumber ? 1 : 0)\r\n        }\r\n      })",
+      "start": {
+        "line": 20,
+        "column": 6
+      },
+      "end": {
+        "line": 36,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor (parent = null, leafs = [], nodes = [null]) {\r\n    Object.defineProperties(this, {\r\n      parent: NGN.private(parent),\r\n      leafs: NGN.private(leafs),\r\n      nodes: NGN.private(nodes),\r\n\r\n      METADATA: NGN.private({\r\n        order: null,\r\n        minOrder: null,\r\n\r\n        /**\r\n        * Compare two numbers\r\n        * @param  {number} firstNumber\r\n        * @param  {number} secondNumber\r\n        * @return {number}\r\n        * - Returns `-1` if first number is less than second.\r\n        * - Returns `0` if numbers are equal.\r\n        * - Returns `1` if first number is greater than second.\r\n        */\r\n        compare: (firstNumber, secondNumber) => {\r\n          return firstNumber < secondNumber ? -1 : (firstNumber > secondNumber ? 1 : 0)\r\n        }\r\n      })\r\n    })\r\n\r\n    // Associate leafs with parent\r\n    for (let i = 0; i < this.leafs.length; i++) {\r\n      this.leafs[i].parent = this\r\n      // Object.defineProperty(this.leafs[i], 'parent', NGN.get(() => this))\r\n    }\r\n\r\n    // Associate nodes with parent\r\n    for (let i = 0; i < this.nodes.length; i++) {\r\n      if (this.nodes[i] !== null) {\r\n        this.nodes[i].parent = this\r\n        // Object.defineProperty(this.nodes[i], 'parent', NGN.get(() => this))\r\n      }\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 14,
+        "column": 2
+      },
+      "end": {
+        "line": 52,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "parent": {
+          "type": "argument",
+          "label": "parent",
+          "description": null,
+          "code": "parent = null",
+          "start": {
+            "line": 14,
+            "column": 15
+          },
+          "end": {
+            "line": 14,
+            "column": 28
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "object",
+          "required": false,
+          "enum": null
+        },
+        "leafs": {
+          "type": "argument",
+          "label": "leafs",
+          "description": null,
+          "code": "leafs = []",
+          "start": {
+            "line": 14,
+            "column": 30
+          },
+          "end": {
+            "line": 14,
+            "column": 40
+          },
+          "flags": [],
+          "authors": [],
+          "default": "[]",
+          "datatype": "object",
+          "required": false,
+          "enum": null
+        },
+        "nodes": {
+          "type": "argument",
+          "label": "nodes",
+          "description": null,
+          "code": "nodes = [null]",
+          "start": {
+            "line": 14,
+            "column": 42
+          },
+          "end": {
+            "line": 14,
+            "column": 56
+          },
+          "flags": [],
+          "authors": [],
+          "default": "[null]",
+          "datatype": "object",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "search": {
+      "type": "method",
+      "label": "search",
+      "description": "Search for the node that contains the specified key",
+      "code": "search (key) {\r\n    if (this.leafs.length > 0) {\r\n      let a = this.leafs[0]\r\n\r\n      if (this.METADATA.compare(a.key, key) === 0) {\r\n        return {\r\n          leaf: a,\r\n          index: 0\r\n        }\r\n      }\r\n\r\n      if (this.METADATA.compare(key, a.key) < 0) {\r\n        if (this.nodes[0] !== null) {\r\n          return this.nodes[0].search(key) // Left\r\n        }\r\n\r\n        return { node: this, index: 0 }\r\n      }\r\n\r\n      let i\r\n      for (i = 1; i < this.leafs.length; i++) {\r\n        let b = this.leafs[i]\r\n\r\n        if (this.METADATA.compare(b.key, key) === 0) {\r\n          return {\r\n            leaf: b,\r\n            index: i\r\n          }\r\n        }\r\n\r\n        if (this.METADATA.compare(key, b.key) < 0) {\r\n          if (this.nodes[i] !== null) {\r\n            return this.nodes[i].search(key) // Inner\r\n          }\r\n\r\n          return { node: this, index: i }\r\n        }\r\n\r\n        a = b\r\n      }\r\n\r\n      if (this.nodes[i] !== null) {\r\n        return this.nodes[i].search(key) // Right\r\n      }\r\n\r\n      return { node: this, index: i }\r\n    }\r\n\r\n    return { node: this, index: 0 }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 59,
+        "column": 2
+      },
+      "end": {
+        "line": 108,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": "",
+          "code": "key",
+          "start": {
+            "line": 59,
+            "column": 10
+          },
+          "end": {
+            "line": 59,
+            "column": 13
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "TreeLeaf|TreeNode",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "get": {
+      "type": "method",
+      "label": "get",
+      "description": "Retrieve the value of a key.\r\n \r\n \r\n Returns `undefined` if no leaf is found.",
+      "code": "get (key) {\r\n    let result = this.search(key)\r\n    return result.leaf ? result.leaf.value : undefined\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 116,
+        "column": 2
+      },
+      "end": {
+        "line": 119,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": "",
+          "code": "key",
+          "start": {
+            "line": 116,
+            "column": 7
+          },
+          "end": {
+            "line": 116,
+            "column": 10
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "NGNTreeLeaf",
+      "returnDescription": "null Returns `undefined` if no leaf is found.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "put": {
+      "type": "method",
+      "label": "put",
+      "description": "Insert a key/value pair into the node.\r\n \r\n \r\n \r\n Overwrite existing values.",
+      "code": "put (key, value, overwrite = true) {\r\n    let result = this.search(key)\r\n\r\n    // Key already exists\r\n    if (result.leaf) {\r\n      if (!overwrite) {\r\n        return\r\n      }\r\n\r\n      result.leaf.value = value\r\n      return\r\n    }\r\n\r\n    let node = result.node\r\n    let index = result.index\r\n\r\n    node.leafs.splice(index, 0, new TreeLeaf(node, key, value))\r\n    node.nodes.splice(index + 1, 0, null)\r\n\r\n    if (node.leafs.length > this.METADATA.order) {\r\n      node.split()\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 128,
+        "column": 2
+      },
+      "end": {
+        "line": 150,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": "",
+          "code": "key",
+          "start": {
+            "line": 128,
+            "column": 7
+          },
+          "end": {
+            "line": 128,
+            "column": 10
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        },
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "",
+          "code": "value",
+          "start": {
+            "line": 128,
+            "column": 12
+          },
+          "end": {
+            "line": 128,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "overwrite": {
+          "type": "argument",
+          "label": "overwrite",
+          "description": "Overwrite existing values.",
+          "code": "overwrite = true",
+          "start": {
+            "line": 128,
+            "column": 19
+          },
+          "end": {
+            "line": 128,
+            "column": 35
+          },
+          "flags": [],
+          "authors": [],
+          "default": "true",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "delete": {
+      "type": "method",
+      "label": "delete",
+      "description": "Delete key.",
+      "code": "delete (key) {\r\n    var result = this.search(key)\r\n\r\n    if (!result.leaf) {\r\n      return\r\n    }\r\n\r\n    let leaf = result.leaf\r\n    let node = leaf.parent\r\n    let index = result.index\r\n    let left = node.nodes[index]\r\n\r\n    if (left === null) {\r\n      node.leafs.splice(index, 1)\r\n      node.nodes.splice(index, 1)\r\n      node.balance()\r\n    } else {\r\n      let max = left.leafs[left.leafs.length - 1]\r\n\r\n      left.delete(max.key)\r\n\r\n      max.parent = node\r\n\r\n      node.leafs.splice(index, 1, max)\r\n    }\r\n\r\n    return true\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 156,
+        "column": 2
+      },
+      "end": {
+        "line": 183,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": "",
+          "code": "key",
+          "start": {
+            "line": 156,
+            "column": 10
+          },
+          "end": {
+            "line": 156,
+            "column": 13
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "boolean",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "balance": {
+      "type": "method",
+      "label": "balance",
+      "description": "Balance the tree.",
+      "code": "balance () {\r\n    if (this.parent instanceof Tree) {\r\n      // Root has a single child and no leafs\r\n      if (this.leafs.length === 0 && this.nodes[0] !== null) {\r\n        this.parent.root = this.nodes[0]\r\n        this.parent.root.parent = this.parent\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    if (this.leafs.length >= this.METADATA.minOrder) {\r\n      return\r\n    }\r\n\r\n    let index = this.parent.nodes.indexOf(this)\r\n    let left = index > 0 ? this.parent.nodes[index - 1] : null\r\n    let right = this.parent.nodes.length > index + 1 ? this.parent.nodes[index + 1] : null\r\n    let sep\r\n    let leaf\r\n    let rest\r\n\r\n    if (right !== null && right.leafs.length > this.METADATA.minOrder) {\r\n      // Append the parent separator\r\n      sep = this.parent.leafs[index]\r\n      sep.parent = this\r\n\r\n      this.leafs.push(sep)\r\n\r\n      // Replace blank with the first right leaf\r\n      leaf = right.leafs.shift()\r\n      leaf.parent = this.parent\r\n\r\n      this.parent.leafs[index] = leaf\r\n\r\n      // Append the right rest\r\n      rest = right.nodes.shift()\r\n\r\n      if (rest !== null) {\r\n        rest.parent = this\r\n      }\r\n\r\n      this.nodes.push(rest)\r\n    } else if (left !== null && left.leafs.length > this.METADATA.minOrder) {\r\n      // Prepend the parent seperator\r\n      sep = this.parent.leafs[index - 1]\r\n      sep.parent = this\r\n\r\n      this.leafs.unshift(sep)\r\n\r\n      // Replace the blank with the last left leaf\r\n      leaf = left.leafs.pop()\r\n      leaf.parent = this.parent\r\n\r\n      this.parent.leafs[index - 1] = leaf\r\n\r\n      // Prepend the left rest to this\r\n      rest = left.nodes.pop()\r\n\r\n      if (rest !== null) {\r\n        rest.parent = this\r\n      }\r\n\r\n      this.nodes.unshift(rest)\r\n    } else {\r\n      let subst\r\n\r\n      if (right !== null) {\r\n        // Combine this + seperator from the parent + right\r\n        sep = this.parent.leafs[index]\r\n        subst = new TreeNode(this.parent, this.leafs.concat([sep], right.leafs), this.nodes.concat(right.nodes))\r\n        subst.METADATA.order = this.METADATA.order\r\n        subst.METADATA.minOrder = this.METADATA.minOrder\r\n\r\n        // Remove the seperator from the parent\r\n        this.parent.leafs.splice(index, 1)\r\n\r\n        // And replace the nodes it seperated with subst\r\n        this.parent.nodes.splice(index, 2, subst)\r\n      } else if (left !== null) {\r\n        // Combine left + seperator from parent + this\r\n        sep = this.parent.leafs[index - 1]\r\n        subst = new TreeNode(\r\n          this.parent,\r\n          left.leafs.concat([sep], this.leafs),\r\n          left.nodes.concat(this.nodes)\r\n        )\r\n\r\n        subst.METADATA.minOrder = this.METADATA.minOrder\r\n        subst.METADATA.order = this.METADATA.order\r\n\r\n        // Remove the seperator from the parent\r\n        this.parent.leafs.splice(index - 1, 1)\r\n\r\n        // Replace seperated nodes with subst\r\n        this.parent.nodes.splice(index - 1, 2, subst)\r\n      } else {\r\n        throw new Error(`Internal error: ${this.toString(true)} has neither a left nor a right sibling`)\r\n      }\r\n\r\n      this.parent.balance()\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 189,
+        "column": 2
+      },
+      "end": {
+        "line": 291,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "split": {
+      "type": "method",
+      "label": "split",
+      "description": "Split the node.",
+      "code": "split () {\r\n    let index = Math.floor(this.leafs.length / 2)\r\n\r\n    if (this.parent instanceof Tree) {\r\n      this.nodes = [\r\n        new TreeNode(this, this.leafs.slice(0, index), this.nodes.slice(0, index + 1)),\r\n        new TreeNode(this, this.leafs.slice(index + 1), this.nodes.slice(index + 1))\r\n      ]\r\n\r\n      this.leafs = [this.leafs[index]]\r\n    } else {\r\n      let leaf = this.leafs[index]\r\n      let rest = new TreeNode(\r\n        this.parent,\r\n        this.leafs.slice(index + 1),\r\n        this.nodes.slice(index + 1)\r\n      )\r\n\r\n      this.leafs = this.leafs.slice(0, index)\r\n      this.nodes = this.nodes.slice(0, index + 1)\r\n\r\n      this.parent.unsplit(leaf, rest)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 296,
+        "column": 2
+      },
+      "end": {
+        "line": 319,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "unsplit": {
+      "type": "method",
+      "label": "unsplit",
+      "description": "Unsplits a child.",
+      "code": "unsplit (leaf, rest) {\r\n    leaf.parent = this\r\n    rest.parent = this\r\n\r\n    let a = this.leafs[0]\r\n\r\n    if (this.METADATA.compare(leaf.key, a.key) < 0) {\r\n      this.leafs.unshift(leaf)\r\n      this.nodes.splice(1, 0, rest)\r\n    } else {\r\n      let i\r\n      for (i = 1; i < this.leafs.length; i++) {\r\n        let b = this.leafs[i]\r\n\r\n        if (this.METADATA.compare(leaf.key, b.key) < 0) {\r\n          this.leafs.splice(i, 0, leaf)\r\n          this.nodes.splice(i + 1, 0, rest)\r\n          break\r\n        }\r\n      }\r\n\r\n      if (i === this.leafs.length) {\r\n        this.leafs.push(leaf)\r\n        this.nodes.push(rest)\r\n      }\r\n    }\r\n\r\n    if (this.leafs.length > this.METADATA.order) {\r\n      this.split()\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 328,
+        "column": 2
+      },
+      "end": {
+        "line": 358,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "leaf": {
+          "type": "argument",
+          "label": "leaf",
+          "description": "",
+          "code": "leaf",
+          "start": {
+            "line": 328,
+            "column": 11
+          },
+          "end": {
+            "line": 328,
+            "column": 15
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngntreeleaf",
+          "required": true,
+          "enum": null
+        },
+        "rest": {
+          "type": "argument",
+          "label": "rest",
+          "description": "",
+          "code": "rest",
+          "start": {
+            "line": 328,
+            "column": 17
+          },
+          "end": {
+            "line": 328,
+            "column": 21
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngntreenode",
+          "required": true,
+          "enum": null
+        },
+        "order": {
+          "type": "argument",
+          "label": "order",
+          "description": "",
+          "code": "unsplit (leaf, rest) {\r\n    leaf.parent = this\r\n    rest.parent = this\r\n\r\n    let a = this.leafs[0]\r\n\r\n    if (this.METADATA.compare(leaf.key, a.key) < 0) {\r\n      this.leafs.unshift(leaf)\r\n      this.nodes.splice(1, 0, rest)\r\n    } else {\r\n      let i\r\n      for (i = 1; i < this.leafs.length; i++) {\r\n        let b = this.leafs[i]\r\n\r\n        if (this.METADATA.compare(leaf.key, b.key) < 0) {\r\n          this.leafs.splice(i, 0, leaf)\r\n          this.nodes.splice(i + 1, 0, rest)\r\n          break\r\n        }\r\n      }\r\n\r\n      if (i === this.leafs.length) {\r\n        this.leafs.push(leaf)\r\n        this.nodes.push(rest)\r\n      }\r\n    }\r\n\r\n    if (this.leafs.length > this.METADATA.order) {\r\n      this.split()\r\n    }\r\n  }",
+          "start": {
+            "line": 328,
+            "column": 2
+          },
+          "end": {
+            "line": 358,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "default": "52",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "toString": {
+      "type": "method",
+      "label": "toString",
+      "description": "A string representation of the node.\r\n \r\n Include sub-nodes",
+      "code": "toString (includeNodes = false) {\r\n    let value = []\r\n    let i\r\n\r\n    for (i = 0; i < this.leafs.length; i++) {\r\n      value.push(this.leafs[i].key)\r\n    }\r\n\r\n    let s = `[${value.toString()}]${(this.parent instanceof Tree ? ':*' : ':')}${this.parent}`\r\n\r\n    if (includeNodes) {\r\n      for (i = 0; i < this.nodes.length; i++) {\r\n        s += ` -> ${this.nodes[i]}`\r\n      }\r\n    }\r\n\r\n    return s\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 367,
+        "column": 2
+      },
+      "end": {
+        "line": 384,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "includeNodes": {
+          "type": "argument",
+          "label": "includeNodes",
+          "description": "Include sub-nodes",
+          "code": "includeNodes = false",
+          "start": {
+            "line": 367,
+            "column": 12
+          },
+          "end": {
+            "line": 367,
+            "column": 32
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "string",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    }
+  }
+}

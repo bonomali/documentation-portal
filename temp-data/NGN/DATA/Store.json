@@ -1,0 +1,1945 @@
+{
+  "type": "class",
+  "label": "NGN.DATA.Store",
+  "description": "An array of the field names for which the store maintains indexes.",
+  "code": "class NGNDataStore extends EventEmitter { // eslint-disable-line\r\n  constructor (cfg = {}) {\r\n    if (NGN.typeof(cfg) === 'model') {\r\n      cfg = { model: cfg }\r\n    } else if (!cfg.model || !NGN.DATA.UTILITY.isDataModel(cfg.model)) {\r\n      throw new InvalidConfigurationError('Missing or invalid \"model\" configuration property.')\r\n    }\r\n\r\n    super()\r\n\r\n    const me = this\r\n\r\n    Object.defineProperties(this, {\r\n      /**\r\n       * @cfgproperty {string} [name]\r\n       * A descriptive name for the store. This is typically used for\r\n       * debugging, logging, and (somtimes) data proxies.\r\n       */\r\n      name: NGN.const(NGN.coalesce(cfg.name, 'Untitled Data Store')),\r\n\r\n      METADATA: NGN.private({\r\n        // Holds the models/records\r\n        records: [],\r\n\r\n        /**\r\n         * @cfgproperty {NGN.DATA.Model} model\r\n         * An NGN Data Model to which data records conform.\r\n         */\r\n        Model: NGN.coalesce(cfg.model),\r\n\r\n        /**\r\n         * @cfg {boolean} [allowDuplicates=true]\r\n         * Set to `false` to prevent duplicate records from being added.\r\n         * If a duplicate record is added, it will be ignored and an\r\n         * error will be thrown.\r\n         *\r\n         * **Identifying duplicates _may_ be slow** on data sets with 200+ records.\r\n         * Uniqueness is determined by a checksum of the current NGN.DATA.Model#data\r\n         * of a record. The amount of time required to generate a checksum can range\r\n         * from 3ms to 150ms per record depending on data complexity.\r\n         *\r\n         * In most scenarios, the performance impact will be negligible/indistinguishable\r\n         * to the naked eye. However; if an application experiences slow data\r\n         * load or processing times, setting this to `false` may help.\r\n         */\r\n        allowDuplicates: NGN.coalesce(cfg.allowDuplicates, true),\r\n\r\n        /**\r\n         * @cfg {boolean} [errorOnDuplicate=false]\r\n         * Set to `true` to throw an error when a duplicate record is detected.\r\n         * If this is not set, it will default to the value of #allowDuplicates.\r\n         * If #allowDuplicates is not defined either, this will be `true`\r\n         */\r\n        errorOnDuplicate: NGN.coalesce(cfg.errorOnDuplicate, cfg.allowDuplicates, false),\r\n\r\n        /**\r\n         * @cfg {boolean} [allowInvalid=true]\r\n         * Allow invalid records to be added to the store.\r\n         */\r\n        allowInvalid: NGN.coalesce(cfg.allowInvalid, true),\r\n\r\n        /**\r\n         * @cfg {boolean} [errorOnInvalid=false]\r\n         * Set to `true` to throw an error when an attempt is made to add an\r\n         * invalid record.\r\n         */\r\n        errorOnInvalid: NGN.coalesce(cfg.errorOnInvalid, cfg.allowInvalid, false),\r\n\r\n        /**\r\n         * @cfgproperty {boolean} [autoRemoveExpiredRecords=true]\r\n         * When set to `true`, the store will automatically delete expired records.\r\n         */\r\n        autoRemoveExpiredRecords: NGN.coalesce(cfg.autoRemoveExpiredRecords, true),\r\n\r\n        /**\r\n         * @cfg {boolean} [softDelete=false]\r\n         * When set to `true`, the store makes a copy of a record before removing\r\n         * it from the store. The store will still emit a `record.delete` event,\r\n         * and it will still behanve as though the record has been completely\r\n         * removed. However; the record copy can be retrieved using the #restore\r\n         * method.\r\n         *\r\n         * Since it is not always desirable to store a copy of every deleted\r\n         * record indefinitely, it is possible to expire and permanently remove\r\n         * records by setting the #softDeleteTtl.\r\n         *\r\n         * ```js\r\n         * var People = new NGN.DATA.Store({\r\n         *   model: Person,\r\n         *   softDelete: true,\r\n         *   softDeleteTtl: 10000\r\n         * })\r\n         *\r\n         * People.add(somePerson)\r\n         *\r\n         * var removedRecordId\r\n         * People.once('record.delete', function (record) {\r\n         *   removedRecordId = record.id\r\n         * })\r\n         *\r\n         * People.remove(somePerson)\r\n         *\r\n         * setTimeout(function () {\r\n         *   People.restore(removedRecordId)\r\n         * }, 5000)\r\n         *\r\n         * ```\r\n         *\r\n         * The code above creates a new store and adds a person to it.\r\n         * Then a placeholder variable (`removedRecordId`) is created.\r\n         * Next, a one-time event listener is added to the store, specifically\r\n         * for handling the removal of a record. Then the record is removed,\r\n         * which triggers the `record.delete` event, which populates\r\n         * `removedRecordId` with the ID of the record that was deleted.\r\n         * Finally, the code waits for 5 seconds, then restores the record. If\r\n         * the #restore method _wasn't_ called, the record would be purged\r\n         * from memory after 10 seconds (because `softDeleteTtl` is set to 10000\r\n         * milliseconds).\r\n         */\r\n        softDelete: NGN.coalesce(cfg.softDelete, false),\r\n\r\n        /**\r\n         * @cfg {number} [softDeleteTtl=-1]\r\n         * This is the number of milliseconds the store waits before purging a\r\n         * soft-deleted record from memory. `-1` = Infinite (no TTL).\r\n         */\r\n        softDeleteTtl: NGN.coalesce(cfg.softDeleteTtl, -1),\r\n\r\n        // ARCHIVE contains soft deleted records\r\n\r\n        /**\r\n         * @cfg {Number} [FIFO=-1]\r\n         * Configures the store to use \"**F**irst **I**n **F**irst **O**ut\"\r\n         * record processing when it reaches a maximum number of records.\r\n         *\r\n         * For example, assume `FIFO=10`. When the 11th record is added, it\r\n         * will replace the oldest record (i.e. the 1st). This guarantees the\r\n         * store will never have more than 10 records at any given time and it\r\n         * will always maintain the latest records.\r\n         *\r\n         * FIFO and LIFO cannot be applied at the same time.\r\n         *\r\n         * **BE CAREFUL** when using this in combination with #insert,\r\n         * #insertBefore, or #insertAfter. FIFO is applied _after_ the record\r\n         * is added to the store but _before_ it is moved to the desired index.\r\n         */\r\n        fifo: NGN.coalesce(cfg.FIFO, -1),\r\n\r\n        /**\r\n         * @cfg {Number} [LIFO=-1]\r\n         * Configures the store to use \"**L**ast **I**n **F**irst **O**ut\"\r\n         * record processing when it reaches a maximum number of records.\r\n         *\r\n         * This methos acts in the opposite manner as #FIFO. However; for\r\n         * all intents and purposes, this merely replaces the last record in\r\n         * the store when a new record is added.\r\n         *\r\n         * For example, assume `FIFO=10`. When the 11th record is added, it\r\n         * will replace the latest record (i.e. the 10th). This guarantees the\r\n         * store will never have more than 10 records at any given time. Every\r\n         * time a new record is added (assuming the store already has the maximum\r\n         * allowable records), it replaces the last record (10th) with the new\r\n         * record.\r\n         *\r\n         * LIFO and FIFO cannot be applied at the same time.\r\n         *\r\n         * **BE CAREFUL** when using this in combination with #insert,\r\n         * #insertBefore, or #insertAfter. LIFO is applied _after_ the record\r\n         * is added to the store but _before_ it is moved to the desired index.\r\n         */\r\n        lifo: NGN.coalesce(cfg.LIFO, -1),\r\n\r\n        /**\r\n         * @cfg {Number} [maxRecords=-1]\r\n         * Setting this will prevent new records from being added past this limit.\r\n         * Attempting to add a record to the store beyond it's maximum will throw\r\n         * an error.\r\n         */\r\n        maxRecords: NGN.coalesce(cfg.maxRecords, -1),\r\n\r\n        /**\r\n         * @cfg {Number} [minRecords=0]\r\n         * Setting this will prevent removal of records if the removal would\r\n         * decrease the count below this limit.\r\n         * Attempting to remove a record below the store's minimum will throw\r\n         * an error.\r\n         */\r\n        minRecords: NGN.coalesce(cfg.minRecords, 0),\r\n\r\n        /**\r\n         * @cfg {Number} [autocompact=50000]\r\n         * Identify the number of deletions that should occur before\r\n         * the store is compacted. See #compact. Set this to any value\r\n         * below `100` (the minimum) to disable autocompact.\r\n         */\r\n        autocompact: NGN.coalesce(cfg.autocompact, 50000),\r\n\r\n        /**\r\n         * @cfgproperty {object} fieldmap\r\n         * An object mapping model attribute names to data storage field names.\r\n         *\r\n         * _Example_\r\n         * ```\r\n         * {\r\n         *   ModelFieldName: 'inputName',\r\n         *   father: 'dad',\r\n         *   email: 'eml',\r\n         *   image: 'img',\r\n         *   displayName: 'dn',\r\n         *   firstName: 'gn',\r\n         *   lastName: 'sn',\r\n         *   middleName: 'mn',\r\n         *   gender: 'sex',\r\n         *   dob: 'bd'\r\n         * }\r\n         * ```\r\n         */\r\n        MAP: NGN.coalesce(cfg.fieldmap),\r\n\r\n        EVENTS: new Set([\r\n          'record.duplicate',\r\n          'record.create',\r\n          'record.update',\r\n          'record.delete',\r\n          'record.restored',\r\n          'record.purged',\r\n          'record.move',\r\n          'record.invalid',\r\n          'record.valid',\r\n          'clear',\r\n          'filter.create',\r\n          'filter.delete',\r\n          'index.create',\r\n          'index.delete',\r\n          'compact.start',\r\n          'compact.complete'\r\n        ]),\r\n\r\n        /**\r\n         * @cfg {boolean} [audit=false]\r\n         * Enable auditing to support #undo/#redo operations. This creates and\r\n         * manages a NGN.DATA.TransactionLog.\r\n         */\r\n        AUDITABLE: NGN.coalesce(cfg.audit, false),\r\n        AUDITLOG: NGN.coalesce(cfg.audit, false) ? new NGN.DATA.TransactionLog() : null,\r\n        AUDIT_HANDLER: (change) => {\r\n          if (change.hasOwnProperty('cursor')) {\r\n            this.METADATA.AUDITLOG.commit(this.METADATA.getAuditMap())\r\n          }\r\n        },\r\n\r\n        // The first and last indexes are maintained to determine which active\r\n        // record is considered first/last. Sometimes data is filtered out,\r\n        // so the first/last active record is not guaranteed to represent the\r\n        // first/last actual record. These indexes are maintained to prevent\r\n        // unnecessary iteration in large data sets.\r\n        FIRSTRECORDINDEX: 0,\r\n        LASTRECORDINDEX: 0,\r\n\r\n        /**\r\n         * @cfg {array} [index]\r\n         * An array of #model fields that will be indexed.\r\n         * See NGN.DATA.Index for details.\r\n         */\r\n        INDEX: null\r\n      }),\r\n\r\n      // Internal attributes that should not be extended.\r\n      PRIVATE: NGN.privateconst({\r\n        STUB: Symbol('record.stub'),\r\n\r\n        // A private indexing method\r\n        INDEX: function (record, delta) {\r\n          if (typeof this.event === 'symbol') {\r\n            switch (this.event) {\r\n              case me.PRIVATE.EVENT.CREATE_RECORD:\r\n                me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].add(record[field], record.OID))\r\n                break\r\n\r\n              case me.PRIVATE.EVENT.DELETE_RECORD:\r\n                me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].remove(record.OID, record[field]))\r\n                break\r\n\r\n              case me.PRIVATE.EVENT.LOAD_RECORDS:\r\n                for (let i = 0; i < me.METADATA.records.length; i++) {\r\n                  me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].add(me.METADATA.records[i][field], me.METADATA.records[i].OID))\r\n                }\r\n\r\n                break\r\n\r\n              case me.PRIVATE.EVENT.DELETE_RECORD_FIELD:\r\n                if (me.METADATA.INDEXFIELDS.has(record.field.name)) {\r\n                  me.METADATA.INDEX[record.field.name].remove(record.record.OID, record.field.value)\r\n                }\r\n\r\n                break\r\n            }\r\n          } else {\r\n            switch (this.event) {\r\n              case 'record.update':\r\n                if (me.METADATA.INDEXFIELDS.has(delta.field.name)) {\r\n                  me.METADATA.INDEX[delta.field.name].update(record.OID, delta.old, delta.new)\r\n                }\r\n                break\r\n\r\n              case 'clear':\r\n                me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].reset())\r\n                break\r\n            }\r\n          }\r\n        },\r\n\r\n        // Contains a map of all records\r\n        RECORDMAP: new Map(),\r\n\r\n        // A reference to active records\r\n        ACTIVERECORDMAP: null,\r\n\r\n        // A reference to filtered records (non-active/non-deleted)\r\n        FILTEREDRECORDMAP: null,\r\n\r\n        // Internal events\r\n        EVENT: {\r\n          CREATE_RECORD: Symbol('record.create'),\r\n          DELETE_RECORD: Symbol('record.delete'),\r\n          DELETE_RECORD_FIELD: Symbol('records.field.delete'),\r\n          LOAD_RECORDS: Symbol('records.load')\r\n        },\r\n\r\n        // Makes sure the model configuration specifies a valid and indexable field.\r\n        checkModelIndexField: (field) => {\r\n          let metaconfig = this.METADATA.Model.prototype.CONFIGURATION\r\n\r\n          if (metaconfig.fields && metaconfig.fields.hasOwnProperty(field)) {\r\n            if (metaconfig.fields[field] !== null) {\r\n              if (['model', 'store', 'entity', 'function'].indexOf(NGN.typeof(metaconfig.fields[field])) >= 0) {\r\n                throw new Error(`Cannot create index for \"${field}\" field. Only basic NGN.DATA.Field types can be indexed. Relationship and virtual fields cannot be indexed.`)\r\n              } else if (NGN.typeof(metaconfig.fields[field]) === 'object') {\r\n                if (['model', 'store', 'entity', 'function'].indexOf(NGN.typeof(NGN.coalesce(metaconfig.fields[field].type))) >= 0) {\r\n                  throw new Error(`Cannot create index for \"${field}\" field. Only basic NGN.DATA.Field types can be indexed. Relationship and virtual fields cannot be indexed.`)\r\n                }\r\n              }\r\n            }\r\n          } else {\r\n            throw new Error(`Cannot create index for unrecognized field \"${field}\".`)\r\n          }\r\n        },\r\n\r\n        // Get the type of field from the model definition\r\n        getModelFieldType: (field) => {\r\n          let metaconfig = this.METADATA.Model.prototype.CONFIGURATION\r\n\r\n          if (metaconfig.fields[field] === null) {\r\n            return NGN.typeof(metaconfig.fields[field])\r\n          }\r\n\r\n          if (metaconfig.fields[field].type) {\r\n            return NGN.typeof(metaconfig.fields[field].type)\r\n          }\r\n\r\n          if (metaconfig.fields[field].default) {\r\n            return NGN.typeof(metaconfig.fields[field].default)\r\n          }\r\n\r\n          return NGN.typeof(NGN.coalesce(metaconfig.fields[field]))\r\n        },\r\n\r\n        // Add a record\r\n        addRecord: (data, suppressEvents = false) => {\r\n          const record = new me.METADATA.Model(data)\r\n\r\n          if (!(record instanceof NGN.DATA.Entity)) {\r\n            throw new Error(`Only a NGN.DATA.Model or JSON object may be used in NGN.DATA.Store#add. Received a \"${NGN.typeof(data)}\" value.`)\r\n          }\r\n\r\n          // Prevent invalid record addition (if configured)\r\n          if (!me.METADATA.allowInvalid && !record.valid) {\r\n            NGN.WARN(`An attempt to add invalid data to the \"${this.name}\" store was prevented. The following fields are invalid: ${Array.from(record.METADATA.invalidFieldNames.keys()).join(', ')}`)\r\n\r\n            if (!suppressEvents) {\r\n              this.emit('record.invalid', record)\r\n            }\r\n\r\n            if (this.METADATA.errorOnInvalid) {\r\n              throw new Error(`Invalid data cannot be added to the \"${this.name}\" store.`)\r\n            }\r\n          }\r\n\r\n          // If duplicates are prevented, check the new data.\r\n          if (!me.METADATA.allowDuplicates) {\r\n            for (let i = 0; i < this.METADATA.records.length; i++) {\r\n              if (this.METADATA.records[i].checksum === record.checksum) {\r\n                NGN.WARN(`An attempt to add a duplicate record to the \"${this.name}\" store was prevented.`)\r\n\r\n                if (!suppressEvents) {\r\n                  this.emit('record.duplicate', record)\r\n                }\r\n\r\n                if (this.METADATA.errorOnDuplicate) {\r\n                  throw new Error(`Duplicate records are not allowed in the \"${this.name}\" data store.`)\r\n                }\r\n\r\n                break\r\n              }\r\n            }\r\n          }\r\n\r\n          // Handle special record count processing (LIFO/FIFO support)\r\n          if (me.METADATA.lifo > 0 && me.METADATA.records.length + 1 > me.METADATA.lifo) {\r\n            me.remove(me.METADATA.records.length - 1, suppressEvents)\r\n          } else if (this.METADATA.fifo > 0 && me.METADATA.records.length + 1 > me.METADATA.fifo) {\r\n            me.remove(0, suppressEvents)\r\n          }\r\n\r\n          // Relay model events to this store.\r\n          // record.relay('*', this, 'record.')\r\n          record.on('*', function () {\r\n            switch (this.event) {\r\n              // case 'field.update':\r\n              // case 'field.delete':\r\n              //   // TODO: Update indices\r\n              //   return\r\n\r\n              case 'field.invalid':\r\n              case 'field.valid':\r\n                return me.emit(this.event.replace('field.', 'record.'), record)\r\n\r\n              case 'expired':\r\n                // TODO: Handle expiration\r\n            }\r\n          })\r\n\r\n          delete record.METADATA.store\r\n          Object.defineProperty(record.METADATA, 'store', NGN.get(() => me))\r\n\r\n          // Indexing is handled in an internal event handler\r\n          me.METADATA.records.push(record)\r\n\r\n          // Add the record to the map for efficient retrievel by OID\r\n          me.PRIVATE.RECORDMAP.set(record.OID, me.METADATA.records.length - 1)\r\n\r\n          return record\r\n        },\r\n\r\n        convertStubToRecord: (index, record) => {\r\n          if (record.hasOwnProperty(this.PRIVATE.STUB)) {\r\n            let newRecord = this.PRIVATE.addRecord(record.metadata, false)\r\n            newRecord.OID = record.OID\r\n\r\n            this.METADATA.records[index] = newRecord\r\n\r\n            return newRecord\r\n          } else {\r\n            return record\r\n          }\r\n        }\r\n      }),\r\n\r\n      // Create a convenience alias for the remove method.\r\n      delete: NGN.const(NGN.deprecate(this.remove, 'Store.delete is deprecated. Use Store.remove instead.'))\r\n    })\r\n\r\n    // Create a smart reference to record lists\r\n    Object.defineProperties(this.PRIVATE, {\r\n      ACTIVERECORDS: NGN.get(() => {\r\n        if (this.PRIVATE.ACTIVERECORDMAP === null) {\r\n          return this.PRIVATE.RECORDMAP\r\n        }\r\n\r\n        return this.PRIVATE.ACTIVERECORDMAP\r\n      }),\r\n\r\n      FILTEREDRECORDS: NGN.get(() => {\r\n        if (this.PRIVATE.FILTEREDRECORDMAP === null) {\r\n          return this.PRIVATE.RECORDMAP\r\n        }\r\n\r\n        return this.PRIVATE.FILTEREDRECORDMAP\r\n      })\r\n    })\r\n\r\n    // Disallow modification of internal events\r\n    Object.freeze(this.PRIVATE.EVENT)\r\n\r\n    // Support LIFO (Last In First Out) & FIFO(First In First Out)\r\n    if (this.METADATA.lifo > 0 && this.METADATA.fifo > 0) {\r\n      throw new InvalidConfigurationError('NGN.DATA.Store can be configured to use FIFO or LIFO, but not both simultaneously.')\r\n    }\r\n\r\n    // If LIFO/FIFO is used, disable alternative record count limitations.\r\n    if (this.METADATA.lifo > 0 || this.METADATA.fifo > 0) {\r\n      this.METADATA.minRecords = 0\r\n      this.METADATA.maxRecords = -1\r\n    } else {\r\n      this.METADATA.minRecords = this.METADATA.minRecords < 0 ? 0 : this.METADATA.minRecords\r\n    }\r\n\r\n    // Bubble events to the BUS\r\n    // this.relay('*', NGN.BUS, 'store.')\r\n\r\n    // Configure Indices\r\n    if (NGN.coalesce(cfg.index) && NGN.typeof(this.METADATA.Model.prototype.CONFIGURATION.fields) === 'object') {\r\n      this.createIndex(cfg.index)\r\n    }\r\n\r\n    // Setup auto-compact\r\n    if (this.METADATA.autocompact < 100) {\r\n      this.METADATA.DELETECOUNT = 0\r\n      this.on(this.PRIVATE.EVENTS.DELETE_RECORD, () => {\r\n        this.METADATA.DELETECOUNT++\r\n\r\n        if (this.METADATA >= this.METADATA.autocompact) {\r\n          this.METADATA.DELETECOUNT = 0\r\n          this.compact()\r\n        }\r\n      })\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @property {array} snapshots\r\n   * Contains the data snapshot of the entire store.\r\n   * @readonly\r\n   * @private\r\n   */\r\n  get snapshots () {\r\n    return NGN.coalesce(this.snapshotarchive, [])\r\n  }\r\n\r\n  // Deprecation notice\r\n  get history () {\r\n    NGN.WARN('history is deprecated. Use NGN.DATA.Store#changelog instead.')\r\n    return this.changelog\r\n  }\r\n\r\n  // Deprecation notice\r\n  get recordCount () {\r\n    NGN.WARN('recordCount is deprecated. Use NGN.DATA.Store#size instead.')\r\n    return this.size\r\n  }\r\n\r\n  /**\r\n   * @property {number} count\r\n   * The total number of **active** records contained in the store.\r\n   * Active records are any records that aren't filtered out.\r\n   */\r\n  get size () {\r\n    return this.PRIVATE.ACTIVERECORDS.size\r\n  }\r\n\r\n  /**\r\n   * @property {number} length\r\n   * The total number of records contained in the store.\r\n   * This value does not include any soft-deleted/volatile records.\r\n   */\r\n  get length () {\r\n    return this.METADATA.records.length\r\n  }\r\n\r\n  /**\r\n   * @property {NGN.DATA.Model} first\r\n   * Return the first active record in the store. Returns `null`\r\n   * if the store is empty.\r\n   */\r\n  get first () {\r\n    let record = NGN.coalesce(this.METADATA.records[this.METADATA.FIRSTRECORDINDEX])\r\n\r\n    return this.PRIVATE.convertStubToRecord(this.METADATA.FIRSTRECORDINDEX, record)\r\n    // return NGN.coalesce(this.METADATA.records[this.METADATA.FIRSTRECORDINDEX])\r\n  }\r\n\r\n  /**\r\n   * @property {NGN.DATA.Model} last\r\n   * Return the last active record in the store. Returns `null`\r\n   * if the store is empty.\r\n   */\r\n  get last () {\r\n    let record = NGN.coalesce(this.METADATA.records[this.METADATA.LASTRECORDINDEX])\r\n\r\n    return this.PRIVATE.convertStubToRecord(this.METADATA.LASTRECORDINDEX, record)\r\n  }\r\n\r\n  /**\r\n   * @property {object} data\r\n   * A serialized version of the data represented by the store. This\r\n   * only includes non-virtual fields. See #representation to use\r\n   * a representation of data containing virtual fields.\r\n   */\r\n  get data () {\r\n    const recordList = this.PRIVATE.ACTIVERECORDS\r\n\r\n    // If no records exist, skip\r\n    if (recordList.size === 0) {\r\n      return []\r\n    }\r\n\r\n    let rec = this.PRIVATE.convertStubToRecord(this.METADATA.FIRSTRECORDINDEX, this.METADATA.records[this.METADATA.FIRSTRECORDINDEX])\r\n\r\n    if (this.METADATA.MAP === null) {\r\n      this.METADATA.MAP = NGN.coalesce(rec.MAP)\r\n    }\r\n\r\n    let defaults = null\r\n\r\n    if (rec instanceof NGN.DATA.Entity) {\r\n      let fieldDefinitions = rec.fieldDefinitions\r\n      let fields = Object.keys(fieldDefinitions)\r\n\r\n      defaults = {}\r\n\r\n      fields.forEach(field => {\r\n        if (!fieldDefinitions[field].hidden && !fieldDefinitions[field].virtual) {\r\n          defaults[field] = fieldDefinitions[field].default\r\n        }\r\n      })\r\n    }\r\n\r\n    const result = []\r\n    // const fields = defaults !== null ? Object.keys(defaults) : []\r\n\r\n    // Iterate through set\r\n    recordList.forEach(index => {\r\n      if (this.METADATA.records[index] !== null) {\r\n        // If the value is a stub, map it.\r\n        if (this.METADATA.records[index].hasOwnProperty(this.PRIVATE.STUB)) {\r\n          let applicableData = Object.assign({}, defaults)\r\n          let data = Object.assign(applicableData, this.METADATA.records[index].metadata)\r\n\r\n          if (this.METADATA.MAP !== null) {\r\n            result.push(this.METADATA.MAP.applyInverseMap(data))\r\n          } else {\r\n            result.push(data)\r\n          }\r\n        } else {\r\n          result.push(this.METADATA.records[index].data)\r\n        }\r\n      }\r\n    })\r\n\r\n    return result\r\n  }\r\n\r\n  /**\r\n   * @property {array} representation\r\n   * The complete and unfiltered underlying representation dataset\r\n   * (data + virtuals of each model).\r\n   */\r\n  get representation () {\r\n    const result = []\r\n    const recordList = this.PRIVATE.ACTIVERECORDS\r\n\r\n    recordList.forEach(index => {\r\n      if (this.METADATA.records[index] !== null) {\r\n        result.push(this.METADATA.records[index].representation)\r\n      }\r\n    })\r\n\r\n    return result\r\n  }\r\n\r\n  get auditable () {\r\n    return this.METADATA.AUDITABLE\r\n  }\r\n\r\n  set auditable (value) {\r\n    value = NGN.forceBoolean(value)\r\n\r\n    if (value !== this.METADATA.AUDITABLE) {\r\n      this.METADATA.AUDITABLE = value\r\n      this.METADATA.AUDITLOG = value ? new NGN.DATA.TransactionLog() : null\r\n    }\r\n  }\r\n\r\n  get model () {\r\n    return this.METADATA.Model\r\n  }\r\n\r\n  // set model (value) {\r\n  //   if (value !== this.METADATA.Model) {\r\n  //     if (NGN.typeof(value) !== 'model') {\r\n  //       throw new InvalidConfigurationError(`\"${this.name}\" model could not be set because the value is a ${NGN.typeof(value)} type (requires NGN.DATA.Model).`)\r\n  //     }\r\n  //\r\n  //     this.METADATA.Model = value\r\n  //   }\r\n  // }\r\n\r\n  get map () {\r\n    return this.METADATA.MAP\r\n  }\r\n\r\n  /**\r\n   * @property {array} indexedFieldNames\r\n   * An array of the field names for which the store maintains indexes.\r\n   */\r\n  get indexedFieldNames () {\r\n    if (this.METADATA.INDEXFIELDS) {\r\n      return Array.from(this.METADATA.INDEXFIELDS)\r\n    } else {\r\n      return []\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method add\r\n   * Append a data record to the store. This adds the record to the end of the list.\r\n   * @param {NGN.DATA.Model|object} data\r\n   * Accepts an existing NGN Data Model or a JSON object.\r\n   * If a JSON object is supplied, it will be applied to\r\n   * the data model specified in #model.\r\n   * @param {boolean} [suppressEvents=false]\r\n   * Set this to `true` to prevent the `record.create` event\r\n   * from firing.\r\n   * @return {NGN.DATA.Model}\r\n   * Returns the new record.\r\n   */\r\n  add (data, suppressEvents = false) {\r\n    // Support array input\r\n    if (NGN.typeof(data) === 'array') {\r\n      let result = new Array(data.length)\r\n\r\n      for (let i = 0; i < data.length; i++) {\r\n        result[i] = this.add(data[i], suppressEvents)\r\n      }\r\n\r\n      return result\r\n    }\r\n\r\n    // Prevent creation if it will exceed maximum record count.\r\n    if (this.METADATA.maxRecords > 0 && this.METADATA.records.length + 1 > this.METADATA.maxRecords) {\r\n      throw new Error('Maximum record count exceeded.')\r\n    }\r\n\r\n    if (!(data instanceof this.METADATA.Model)) {\r\n      // Force a data model\r\n      if (NGN.typeof(data) === 'string') {\r\n        data = JSON.parse(data)\r\n      }\r\n\r\n      if (typeof data !== 'object') {\r\n        throw new Error(`${NGN.typeof(data)} is an invalid data type (must be an object conforming to the ${this.METADATA.Model.name} field configuration).`)\r\n      }\r\n    } else {\r\n      data = data.data\r\n    }\r\n\r\n    const record = this.PRIVATE.addRecord(data)\r\n\r\n    // TODO: Apply filters to new record before identifying the last record.\r\n    this.METADATA.LASTRECORDINDEX = this.METADATA.records.length - 1\r\n\r\n    this.emit(this.PRIVATE.EVENT.CREATE_RECORD, record)\r\n\r\n    if (!suppressEvents) {\r\n      this.emit('record.create', record)\r\n    }\r\n\r\n    return record\r\n  }\r\n\r\n  /**\r\n   * @method remove\r\n   * Remove a record.\r\n   * @param {NGN.DATA.Model|number|Symbol} record\r\n   * Accepts an existing NGN Data Model or index number.\r\n   * Using a model is slower than using an index number.\r\n   * This may also be the NGN.DATA.Model#OID value (for\r\n   * advanced use cases).\r\n   * @fires record.delete\r\n   * The record delete event sends 2 arguments to handler methods:\r\n   * `record` and `index`. The record refers to the model that was\r\n   * removed. The `index` refers to the position of the record within\r\n   * the store's data list. **NOTICE** the `index` refers to where\r\n   * the record _used to be_.\r\n   * @returns {NGN.DATA.Model}\r\n   * Returns the data model that was just removed. If a model\r\n   * is unavailable (i.e. remove didn't find the specified record),\r\n   * this will return `null`.\r\n   */\r\n  remove (record, suppressEvents = false) {\r\n    // Short-circuit processing if there are no records.\r\n    if (this.METADATA.records.length === 0) {\r\n      NGN.INFO(`\"${this.name}\" store called remove(), but the store contains no records.`)\r\n      return\r\n    }\r\n\r\n    // Support removal of simultaneously removing multiple records\r\n    if (NGN.typeof(record) === 'array') {\r\n      let result = new Array(record.length)\r\n\r\n      for (let i = 0; i < record.length; i++) {\r\n        result[i] = this.remove(record[i])\r\n      }\r\n\r\n      return result\r\n    }\r\n\r\n    // Prevent removal if it will exceed minimum record count.\r\n    if (this.minRecords > 0 && this.METADATA.records.length - 1 < this.minRecords) {\r\n      throw new Error('Removing this record would violate the minimum record count.')\r\n    }\r\n\r\n    // Identify which record will be removed.\r\n    let index\r\n\r\n    switch (NGN.typeof(record)) {\r\n      case 'number':\r\n        if (record < 0 || !this.METADATA.records[record]) {\r\n          NGN.ERROR(`Record removal failed (record not found at index ${(record || 'undefined').toString()}).`)\r\n          return null\r\n        }\r\n\r\n        index = record\r\n\r\n        break\r\n\r\n      // The default case comes before the symbol case specifically\r\n      // so the record can be converted to an OID value (for use with\r\n      // the RECORDMAP lookup).\r\n      default:\r\n        if (!(record instanceof NGN.DATA.Entity)) {\r\n          NGN.ERROR('Invalid record value passed to Store.remove() method.')\r\n          return null\r\n        }\r\n\r\n        record = record.OID\r\n\r\n      case 'symbol': // eslint-disable-line no-fallthrough\r\n        index = this.PRIVATE.ACTIVERECORDS.get(record)\r\n\r\n        if (index < 0) {\r\n          NGN.ERROR(`Record removal failed. Record OID not found (\"${record.toString()}\").`)\r\n          return null\r\n        }\r\n\r\n        break\r\n    }\r\n\r\n    // If nothing has been deleted yet, create an active record map.\r\n    // The active record map contains Model OID values with a reference\r\n    // to the actual record index.\r\n    if (this.PRIVATE.ACTIVERECORDMAP === null) {\r\n      // Copy the record map to initialize the active records\r\n      this.PRIVATE.ACTIVERECORDMAP = new Map(this.PRIVATE.RECORDMAP)\r\n    }\r\n\r\n    // Identify the record to be removed.\r\n    const removedRecord = this.METADATA.records[index]\r\n\r\n    // If the record isn't among the active records, do not remove it.\r\n    if (removedRecord === null) {\r\n      NGN.WARN('Specified record does not exist.')\r\n      return null\r\n    }\r\n\r\n    let activeIndex = this.PRIVATE.ACTIVERECORDS.get(removedRecord.OID)\r\n\r\n    if (isNaN(activeIndex)) {\r\n      NGN.WARN(`Record not found for \"${removedRecord.OID.toString()}\".`)\r\n      return null\r\n    }\r\n\r\n    this.PRIVATE.ACTIVERECORDS.delete(removedRecord.OID)\r\n\r\n    // If the store is configured to soft-delete,\r\n    // don't actually remove it until it expires.\r\n    if (this.METADATA.softDelete) {\r\n      if (this.METADATA.softDeleteTtl >= 0) {\r\n        removedRecord.once('expired', () => {\r\n          this.METADATA.records[this.PRIVATE.RECORDMAP.get(removedRecord.OID)] = null\r\n          this.PRIVATE.RECORDMAP.delete(removedRecord.OID)\r\n\r\n          if (!suppressEvents) {\r\n            this.emit('record.purge', removedRecord)\r\n          }\r\n        })\r\n\r\n        removedRecord.expires = this.METADATA.softDeleteTtl\r\n      }\r\n    } else {\r\n      this.METADATA.records[this.PRIVATE.RECORDMAP.get(removedRecord.OID)] = null\r\n      this.PRIVATE.RECORDMAP.delete(removedRecord.OID)\r\n    }\r\n\r\n    // Update cursor indexes (to quickly reference first and last active records)\r\n    if (this.METADATA.LASTRECORDINDEX === activeIndex) {\r\n      if (this.PRIVATE.ACTIVERECORDS.size <= 1) {\r\n        this.METADATA.LASTRECORDINDEX = this.PRIVATE.ACTIVERECORDS.values().next().value\r\n        this.METADATA.FIRSTRECORDINDEX = this.METADATA.LASTRECORDINDEX\r\n      } else if (activeIndex !== 0) {\r\n        for (let i = (activeIndex - 1); i >= 0; i--) {\r\n          if (i === 0) {\r\n            this.METADATA.LASTRECORDINDEX = 0\r\n            break\r\n          }\r\n\r\n          const examinedRecord = this.METADATA.records[i]\r\n\r\n          if (examinedRecord !== null) {\r\n            if (this.PRIVATE.ACTIVERECORDS.has(examinedRecord.OID)) {\r\n              this.METADATA.LASTRECORDINDEX = this.PRIVATE.ACTIVERECORDS.get(examinedRecord.OID)\r\n              break\r\n            }\r\n          }\r\n        }\r\n      }\r\n    } else if (this.METADATA.FIRSTRECORDINDEX === activeIndex) {\r\n      let totalSize = this.PRIVATE.ACTIVERECORDS.size\r\n\r\n      for (let i = (activeIndex + 1); i < totalSize; i++) {\r\n        const examinedRecord = this.METADATA.records[i]\r\n\r\n        if (examinedRecord !== null) {\r\n          if (this.PRIVATE.ACTIVERECORDS.has(examinedRecord.OID)) {\r\n            this.METADATA.FIRSTRECORDINDEX = this.PRIVATE.ACTIVERECORDS.get(examinedRecord.OID)\r\n            break\r\n          }\r\n        }\r\n      }\r\n    }\r\n\r\n    this.emit(this.PRIVATE.EVENT.DELETE_RECORD, removedRecord)\r\n\r\n    if (!suppressEvents) {\r\n      this.emit('record.delete', removedRecord)\r\n    }\r\n\r\n    return removedRecord\r\n  }\r\n\r\n  /**\r\n   * Create a new index on the store.\r\n   * @param  {string} field\r\n   * The name of the field to index.\r\n   * @fires index.create\r\n   * Triggered when an index is created. The name of field is passed\r\n   * as the only argument.\r\n   */\r\n  createIndex (field) {\r\n    // Support multiple indexes\r\n    if (NGN.typeof(field) === 'array') {\r\n      for (let i = 0; i < field.length; i++) {\r\n        this.createIndex(field[i])\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    // Make sure index fields are known to the store\r\n    if (!this.METADATA.INDEXFIELDS) {\r\n      this.METADATA.INDEXFIELDS = new Set()\r\n\r\n      // this.on('record.*', this.PRIVATE.INDEX)\r\n      this.on([\r\n        this.PRIVATE.EVENT.CREATE_RECORD,\r\n        this.PRIVATE.EVENT.DELETE_RECORD,\r\n        this.PRIVATE.EVENT.LOAD_RECORDS,\r\n        this.PRIVATE.EVENT.DELETE_RECORD_FIELD,\r\n        'clear'\r\n      ], this.PRIVATE.INDEX)\r\n    }\r\n\r\n    // In an index already exists, ignore it.\r\n    if (this.METADATA.INDEXFIELDS.has(field)) {\r\n      return\r\n    }\r\n\r\n    // Guarantee the existance of the index list\r\n    this.METADATA.INDEX = NGN.coalesce(this.METADATA.INDEX, {})\r\n\r\n    this.PRIVATE.checkModelIndexField(field)\r\n\r\n    this.METADATA.INDEXFIELDS.add(field)\r\n\r\n    // Identify BTree\r\n    let btree = ['number', 'date'].indexOf(this.PRIVATE.getModelFieldType(field)) >= 0\r\n\r\n    this.METADATA.INDEX[field] = new NGN.DATA.Index(btree, `${field.toUpperCase()} ${btree ? 'BTREE ' : ''}INDEX`)\r\n\r\n    // Apply to any existing records\r\n    if (this.METADATA.records.length > 0) {\r\n      this.PRIVATE.INDEX.apply({ event: this.PRIVATE.EVENT.LOAD_RECORDS })\r\n    }\r\n\r\n    this.emit('index.created', field)\r\n  }\r\n\r\n  /**\r\n   * Remove an existing index from the store.\r\n   * @param  {string} [field=null]\r\n   * The name of the indexed field. Set this to `null` (or leave blank) to\r\n   * remove all existing indexes.\r\n   * @fires index.delete\r\n   * Triggered when an index is removed. The name of field is passed\r\n   * as the only argument.\r\n   */\r\n  removeIndex (field = null) {\r\n    if (!this.METADATA.INDEXFIELDS) {\r\n      return\r\n    }\r\n\r\n    if (NGN.coalesce(field) === null) {\r\n      field = this.indexedFieldNames\r\n    }\r\n\r\n    // Support multiple indexes\r\n    if (NGN.typeof(field) === 'array') {\r\n      for (let i = 0; i < field.length; i++) {\r\n        this.removeIndex(field[i])\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    // Remove the specific index.\r\n    this.METADATA.INDEXFIELDS.delete(field)\r\n    delete this.METADATA.INDEX[field]\r\n    this.emit('index.delete', field)\r\n\r\n    // When there are no more indexes, clear out event\r\n    // listeners and fields.\r\n    if (this.METADATA.INDEXFIELDS.size === 0) {\r\n      this.METADATA.INDEX = null\r\n      delete this.METADATA.INDEXFIELDS\r\n\r\n      this.off([\r\n        this.PRIVATE.EVENT.CREATE_RECORD,\r\n        this.PRIVATE.EVENT.DELETE_RECORD,\r\n        this.PRIVATE.EVENT.LOAD_RECORDS,\r\n        this.PRIVATE.EVENT.DELETE_RECORD_FIELD\r\n      ], this.PRIVATE.INDEX)\r\n    }\r\n  }\r\n\r\n  /**\r\n   * Retrieve a record based on it's relative position to another\r\n   * record. This method is used by NGN.DATA.Model#next and NGN.DATA.Model#previous\r\n   * to support \"doubly linked list\" approach to record iteration.\r\n   * @param  {[type]}  currentRecord [description]\r\n   * @param  {Number}  [count=1]     [description]\r\n   * @param  {Boolean} [cycle=false] [description]\r\n   * @return {[type]}                [description]\r\n   */\r\n  getRecordSibling (currentRecord, count = 1, cycle = false) {\r\n    let size = this.size\r\n\r\n    if (size === 0) {\r\n      NGN.WARN('Attempted to execute getRecordSibling with no active records.')\r\n      return null\r\n    }\r\n\r\n    // Make sure the iterator fits within the range\r\n    if (Math.abs(count) > size) {\r\n      count = count % size\r\n    }\r\n\r\n    if (size === 1 || count === 0) {\r\n      return currentRecord\r\n    }\r\n\r\n    let ActiveRecords = Array.from(this.PRIVATE.ACTIVERECORDS)\r\n    let currentIndex = ActiveRecords.findIndex(item => currentRecord.OID === item[0])\r\n\r\n    if (currentIndex < 0) {\r\n      throw new Error('Record not found.')\r\n    }\r\n\r\n    currentIndex += count\r\n\r\n    // Support cycling through records.\r\n    if ((currentIndex >= ActiveRecords.length || currentIndex < 0) && cycle) {\r\n      // Cycle forwards\r\n      if (count > 0) {\r\n        currentIndex = currentIndex % ActiveRecords.length\r\n      } else {\r\n        // Cycle Backwards\r\n        currentIndex = ActiveRecords.length - Math.abs(currentIndex)\r\n      }\r\n    }\r\n\r\n    if (currentIndex < 0 || currentIndex >= ActiveRecords.length) {\r\n      return null\r\n    }\r\n\r\n    return this.METADATA.records[ActiveRecords[currentIndex][1]]\r\n  }\r\n\r\n  /**\r\n   * Returns the index number of the model. If the same\r\n   * model exists more than once (duplicate records), only\r\n   * the first index is returned.\r\n   * @param  {NGN.DATA.Model} model\r\n   * The model/record to retrieve an index number for.\r\n   * @return {number}\r\n   * The zero-based index number of the model.\r\n   */\r\n  indexOf (record) {\r\n    return this.PRIVATE.RECORDMAP.get(record.OID)\r\n  }\r\n\r\n  /**\r\n   * Determine whether the store contains a record.\r\n   * This only checks the active record set (ignores filtered records).\r\n   * @param  {NGN.DATA.Model} record\r\n   * The record to test for inclusion.\r\n   * @return {boolean}\r\n   */\r\n  contains (record) {\r\n    return this.PRIVATE.ACTIVERECORDS.has(record.OID)\r\n  }\r\n\r\n  /**\r\n   * Get the list of records for the given value.\r\n   * @param {string} fieldName\r\n   * The name of the indexed field.\r\n   * @param  {any} fieldValue\r\n   * The value of the index field. This is used to lookup\r\n   * the list of records/models whose field is equal to\r\n   * the specified value.\r\n   * @return {NGN.DATA.Model[]}\r\n   * Returns an array of models/records within the index for\r\n   * the given value.\r\n   */\r\n  getIndexRecords (field, value) {\r\n    if (this.METADATA.INDEX && this.METADATA.INDEX.hasOwnProperty(field)) {\r\n      let oid = this.METADATA.INDEX[field].recordsFor(value)\r\n      let result = new Array(oid.length)\r\n\r\n      for (let i = 0; i < oid.length; i++) {\r\n        result[i] = this.METADATA.records[this.PRIVATE.RECORDMAP.get(oid[i])]\r\n      }\r\n\r\n      return result\r\n    }\r\n\r\n    return []\r\n  }\r\n\r\n  /**\r\n   * Retrieve an active record by index number (0-based, similar to an array).\r\n   * @param  {number} [index=0]\r\n   * The index of the record to retrieve.\r\n   */\r\n  getRecord (index = 0) {\r\n    if (typeof index === 'symbol') {\r\n      index = this.PRIVATE.ACTIVERECORDS.get(index)\r\n    }\r\n\r\n    if (index < 0) {\r\n      NGN.WARN('Cannot retrieve a record for a negative index.')\r\n      return null\r\n    }\r\n\r\n    if (index >= this.PRIVATE.ACTIVERECORDS.size) {\r\n      NGN.WARN('Cannot retrieve a record for an out-of-scope index (index greater than total record count.)')\r\n      return null\r\n    }\r\n\r\n    return this.METADATA.records[Array.from(this.PRIVATE.ACTIVERECORDS)[index][1]]\r\n  }\r\n\r\n  /**\r\n   * @method clear\r\n   * Removes all data. If auditing is enabled, the transaction log is reset.\r\n   * @param {boolean} [purgeSoftDelete=true]\r\n   * Purge soft deleted records from memory.\r\n   * @param {boolean} [suppressEvents=false]\r\n   * Set to `true` to prevent events from triggering when this method is run.\r\n   * @fires clear\r\n   * Fired when all data is removed\r\n   */\r\n  clear (purge = true, suppressEvents = false) {\r\n    if (this.METADATA.ARCHIVE) {\r\n      if (!purge) {\r\n        this.METADATA.ARCHIVE = this.records\r\n      } else {\r\n        delete this.METADATA.ARCHIVE\r\n      }\r\n    }\r\n\r\n    this.METADATA.records = []\r\n    this.PRIVATE.RECORDMAP = new Map()\r\n    this.PRIVATE.ACTIVERECORDMAP = null\r\n    this.PRIVATE.FILTEREDRECORDMAP = null\r\n    this.METADATA.LASTRECORDINDEX = 0\r\n    this.METADATA.FIRSTRECORDINDEX = 0\r\n\r\n    if (this.METADATA.AUDITABLE) {\r\n      this.METADATA.AUDITLOG.reset()\r\n    }\r\n\r\n    // Indexes updated automatically (listening for 'clear' event)\r\n\r\n    if (!suppressEvents) {\r\n      this.emit('clear')\r\n    }\r\n  }\r\n\r\n  /**\r\n   * A special method to clear events from the underlying event emitter.\r\n   * This exists because #clear has a special meaning in a data store (removing\r\n   * all data records vs removing all events).\r\n   * @private\r\n   */\r\n  clearEvents () {\r\n    super.clear(...arguments)\r\n  }\r\n\r\n  /**\r\n   * Replace a model.\r\n   * @deprecated 2.0.0\r\n   * @param  {NGN.DATA.Model} newModel\r\n   * The new model.\r\n   */\r\n  replaceModel (newModel) {\r\n    NGN.deprecate(\r\n      () => { this.model = newModel },\r\n      'replaceModel has been deprected. Set the model directly instead.'\r\n    )\r\n  }\r\n\r\n  /**\r\n   * @method snapshot\r\n   * Add a snapshot of the current store to the #snapshot archive.\r\n   * This can potentially be a computationally/memory-expensive operation.\r\n   * The method creates a copy of all data in the store along with checksums\r\n   * of each element and holds the snapshot in RAM. Large stores may consume\r\n   * large amounts of RAM until the snapshots are released/cleared.\r\n   * Snapshots are most commonly used with data proxies to calculate\r\n   * differences in a data set before persisting them to a database.\r\n   * @fires snapshot\r\n   * Triggered when a new snapshot is created. The snapshot dataset is\r\n   * passed as the only argument to event handlers.\r\n   * @returns {object}\r\n   * Returns an object containing the following fields:\r\n   *\r\n   * ```js\r\n   * {\r\n   *   timestamp: 'ex: 2018-01-19T16:43:03.279Z',\r\n   *   checksum: 'snapshotchecksum',\r\n   *   modelChecksums: [\r\n   *     'record1_checksum',\r\n   *     'record2_checksum'\r\n   *   ],\r\n   *   data: { ... } // Actual data at the time of the snapshot\r\n   * }\r\n   * ```\r\n   */\r\n  snapshot () {\r\n    this.METADATA.snapshotarchive = NGN.coalesce(this.METADATA.snapshotarchive, [])\r\n\r\n    let data = this.data\r\n    let dataset = {\r\n      id: NGN.DATA.UTILITY.GUID(),\r\n      timestamp: (new Date()).toISOString(),\r\n      checksum: NGN.DATA.UTILITY.checksum(JSON.stringify(data)).toString(),\r\n      modelChecksums: this.data.map((item) => {\r\n        return NGN.DATA.UTILITY.checksum(JSON.stringify(item)).toString()\r\n      }),\r\n      data: data\r\n    }\r\n\r\n    this.METADATA.snapshotarchive.unshift(dataset)\r\n    this.emit('snapshot', dataset)\r\n\r\n    return dataset\r\n  }\r\n\r\n  /**\r\n   * @method clearSnapshots\r\n   * Remove all archived snapshots.\r\n   */\r\n  clearSnapshots () {\r\n    this.snapshotarchive = null\r\n  }\r\n\r\n  load (data) {\r\n    console.time('load')\r\n    let insertableData\r\n\r\n    // Guarantee unique records amongst only the new records\r\n    if (!this.METADATA.allowDuplicates) {\r\n      let uniqueValues = new Set()\r\n\r\n      insertableData = []\r\n\r\n      for (let i = 0; i < data.length; i++) {\r\n        if (!uniqueValues.has(JSON.stringify(data[i]))) {\r\n          uniqueValues.add(JSON.stringify(data[i]))\r\n          insertableData.push(data[i])\r\n        } else if (this.METADATA.errorOnDuplicate) {\r\n          throw new NGNDuplicateRecordError()\r\n        }\r\n      }\r\n    } else {\r\n      insertableData = data\r\n    }\r\n\r\n    let newRecordCount = insertableData.length + this.METADATA.records.length\r\n\r\n    // Don't exceed the maximum record count if it exists.\r\n    if (this.METADATA.maxRecords > 0 && newRecordCount > this.METADATA.maxRecords) {\r\n      throw new Error('Maximum record count exceeded.')\r\n    }\r\n\r\n    if (newRecordCount > 4000000) {\r\n      throw new Error('Maximum load size exceeded. A store may contain a maximum of 4M records.')\r\n    }\r\n\r\n    for (let i = 0; i < insertableData.length; i++) {\r\n      let oid = Symbol('model.id')\r\n      this.METADATA.records.push({\r\n        [this.PRIVATE.STUB]: true,\r\n        OID: oid,\r\n        metadata: insertableData[i]\r\n      })\r\n\r\n      // Add the record to the map for efficient retrievel by OID\r\n      this.PRIVATE.RECORDMAP.set(oid, this.METADATA.records.length - 1)\r\n    }\r\n\r\n    // TODO: Apply filters to new record before identifying the last record.\r\n    this.METADATA.LASTRECORDINDEX = this.METADATA.records.length - 1\r\n\r\n    // this.emit(this.PRIVATE.EVENT.LOAD_RECORDS)\r\n  }\r\n\r\n  /**\r\n   * This rebuilds the local index of records, removing any dead records.\r\n   * While deleted records are destroyed (in accordance to #softDeleteTtl),\r\n   * the active record table contains a `null` or `undefined` value for each\r\n   * deleted/dead record. This method removes such records, akin in nature to\r\n   * the common JavaScript garbage collection process.\r\n   *\r\n   * This method almost never needs to be run, since stores\r\n   * attempt to manage this process for themselves automatically. However; if\r\n   * large volume deletions occur rapidly (50K+), it's possible (though not assured)\r\n   * performance could be negatively impacted. Compacting the store can\r\n   * improve performance in these cases. However; running this too often or\r\n   * excessively may degrade performance since it is essentially rewriting\r\n   * the store data each time.\r\n   *\r\n   * When in doubt, *don't* use this method.\r\n   * @info This method will not run when fewer than 100 cumulative records have\r\n   * existed in the store, due to the inefficient nature at such low volume.\r\n   * @fires compact.start\r\n   * Triggered when the compact process begins.\r\n   * @fires compact.complete\r\n   * Triggered when the compact process completes.\r\n   */\r\n  compact () {\r\n    this.emit('compact.start')\r\n\r\n    if (this.METADATA.records.length < 100) {\r\n      this.emit('compact.complete')\r\n\r\n      if (this.METADATA.records.length !== 0) {\r\n        NGN.WARN(`compact() called on ${this.name} with fewer than 100 elements.`)\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    let ranges = []\r\n    let currentRange = []\r\n    let empty = 0\r\n\r\n    // Identify null ranges (dead records)\r\n    for (let i = 0; i < this.METADATA.records.length; i++) {\r\n      if (this.METADATA.records[i] === null) {\r\n        empty++\r\n\r\n        if (currentRange.length === 0) {\r\n          currentRange.push(i)\r\n        }\r\n      } else {\r\n        // Identify new index values for remaining records\r\n        if (empty > 0) {\r\n          this.PRIVATE.RECORDMAP.set(this.METADATA.records[i].OID, i - empty)\r\n\r\n          if (this.METADATA.FIRSTRECORDINDEX === i) {\r\n            this.METADATA.FIRSTRECORDINDEX = i - empty\r\n          }\r\n\r\n          if (this.METADATA.LASTRECORDINDEX === i) {\r\n            this.METADATA.LASTRECORDINDEX = i - empty\r\n          }\r\n        }\r\n\r\n        if (currentRange.length === 1) {\r\n          currentRange.push(i - 1)\r\n          ranges.push(currentRange)\r\n          currentRange = []\r\n        }\r\n      }\r\n    }\r\n\r\n    // Clear null ranges\r\n    empty = 0\r\n    while (ranges.length > 0) {\r\n      this.METADATA.records.splice(ranges[0][0] - empty, ranges[0][1] - ranges[0][0] + 1)\r\n      empty += ranges[0][1] - ranges[0][0] + 1\r\n      ranges.shift()\r\n    }\r\n\r\n    // Reset the active record map\r\n    this.PRIVATE.ACTIVERECORDMAP = null\r\n\r\n    this.emit('compact.complete')\r\n  }\r\n\r\n  /**\r\n   * Performs executes the callback method on each active record\r\n   * within the store. For example:\r\n   *\r\n   * ```js\r\n   * Store.forEach(function (record) {\r\n   *   // Do Something\r\n   * })\r\n   * ```\r\n   * @param  {Function} callback\r\n   * The callback method is applied to each record.\r\n   */\r\n  forEach (fn) {\r\n    if (!NGN.isFn(fn)) {\r\n      throw new Error(`A ${NGN.typeof(fn)} was applied to ${this.name}'s each() method when a function was expected.`)\r\n    }\r\n\r\n    this.PRIVATE.ACTIVERECORDS.forEach((value, key, map) => {\r\n      fn(this.METADATA.records[value])\r\n    })\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {
+    "record.create": {
+      "type": "event",
+      "label": "record.create",
+      "description": null,
+      "code": "this.emit('record.create', record)",
+      "start": {
+        "line": 786,
+        "column": 6
+      },
+      "end": {
+        "line": 786,
+        "column": 40
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "record": {
+          "type": "argument",
+          "label": "record",
+          "description": null,
+          "code": "record",
+          "start": {
+            "line": 786,
+            "column": 33
+          },
+          "end": {
+            "line": 786,
+            "column": 39
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "record.delete": {
+      "type": "event",
+      "label": "record.delete",
+      "description": "The record delete event sends 2 arguments to handler methods:\n`record` and `index`. The record refers to the model that was\nremoved. The `index` refers to the position of the record within\nthe store's data list. **NOTICE** the `index` refers to where\nthe record _used to be_.",
+      "code": "@fires record.delete\nThe record delete event sends 2 arguments to handler methods:\n`record` and `index`. The record refers to the model that was\nremoved. The `index` refers to the position of the record within\nthe store's data list. **NOTICE** the `index` refers to where\nthe record _used to be_.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "record.update": {
+      "type": "event",
+      "label": "record.update",
+      "description": "Fired when a record is modified. A change object\nis provided as an argument to event handlers. The object\ncontains a reference to the store, the old record, and\nthe new record.\n\n```\n{\nstore: <current data store>,\nnew: <NGN.DATA.Model>,\nold: <NGN.DATA.Model>\n}\n```",
+      "code": "@fires record.update\nFired when a record(s) is modified. A change object\nis provided as an argument to event handlers. The object\ncontains a reference to the store, the old record, and\nthe new record.\n\n```\n{\nstore: <current data store>,\nnew: <NGN.DATA.Model>,\nold: <NGN.DATA.Model>\n}\n```",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "record.invalid": {
+      "type": "event",
+      "label": "record.invalid",
+      "description": null,
+      "code": "this.emit('record.invalid', record)",
+      "start": {
+        "line": 412,
+        "column": 14
+      },
+      "end": {
+        "line": 412,
+        "column": 49
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "record": {
+          "type": "argument",
+          "label": "record",
+          "description": null,
+          "code": "record",
+          "start": {
+            "line": 412,
+            "column": 42
+          },
+          "end": {
+            "line": 412,
+            "column": 48
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "record.duplicate": {
+      "type": "event",
+      "label": "record.duplicate",
+      "description": null,
+      "code": "this.emit('record.duplicate', record)",
+      "start": {
+        "line": 427,
+        "column": 18
+      },
+      "end": {
+        "line": 427,
+        "column": 55
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "record": {
+          "type": "argument",
+          "label": "record",
+          "description": null,
+          "code": "record",
+          "start": {
+            "line": 427,
+            "column": 48
+          },
+          "end": {
+            "line": 427,
+            "column": 54
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "record.purge": {
+      "type": "event",
+      "label": "record.purge",
+      "description": null,
+      "code": "this.emit('record.purge', removedRecord)",
+      "start": {
+        "line": 905,
+        "column": 12
+      },
+      "end": {
+        "line": 905,
+        "column": 52
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "removedRecord": {
+          "type": "argument",
+          "label": "removedRecord",
+          "description": null,
+          "code": "removedRecord",
+          "start": {
+            "line": 905,
+            "column": 38
+          },
+          "end": {
+            "line": 905,
+            "column": 51
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "index.created": {
+      "type": "event",
+      "label": "index.created",
+      "description": null,
+      "code": "this.emit('index.created', field)",
+      "start": {
+        "line": 1016,
+        "column": 4
+      },
+      "end": {
+        "line": 1016,
+        "column": 37
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "field": {
+          "type": "argument",
+          "label": "field",
+          "description": null,
+          "code": "field",
+          "start": {
+            "line": 1016,
+            "column": 31
+          },
+          "end": {
+            "line": 1016,
+            "column": 36
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "index.create": {
+      "type": "event",
+      "label": "index.create",
+      "description": "Triggered when an index is created. The name of field is passed\nas the only argument.",
+      "code": "@fires index.create\nTriggered when an index is created. The name of field is passed\nas the only argument.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "index.delete": {
+      "type": "event",
+      "label": "index.delete",
+      "description": "Triggered when an index is removed. The name of field is passed\nas the only argument.",
+      "code": "@fires index.delete\nTriggered when an index is removed. The name of field is passed\nas the only argument.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "clear": {
+      "type": "event",
+      "label": "clear",
+      "description": "Fired when all data is removed",
+      "code": "@fires clear\nFired when all data is removed",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "snapshot": {
+      "type": "event",
+      "label": "snapshot",
+      "description": "Triggered when a new snapshot is created. The snapshot dataset is\npassed as the only argument to event handlers.",
+      "code": "@fires snapshot\nTriggered when a new snapshot is created. The snapshot dataset is\npassed as the only argument to event handlers.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "compact.start": {
+      "type": "event",
+      "label": "compact.start",
+      "description": "Triggered when the compact process begins.",
+      "code": "@fires compact.start\nTriggered when the compact process begins.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "compact.complete": {
+      "type": "event",
+      "label": "compact.complete",
+      "description": "Triggered when the compact process completes.",
+      "code": "@fires compact.complete\nTriggered when the compact process completes.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    }
+  },
+  "start": {
+    "line": 32,
+    "column": 15
+  },
+  "end": {
+    "line": 1464,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/Store.js",
+  "extends": "EventEmitter",
+  "configuration": {
+    "name": {
+      "type": "property",
+      "label": "name",
+      "description": "A descriptive name for the store. This is typically used for\ndebugging, logging, and  data proxies.",
+      "code": "name: NGN.const(NGN.coalesce(cfg.name, 'Untitled Data Store'))",
+      "start": {
+        "line": 50,
+        "column": 6
+      },
+      "end": {
+        "line": 50,
+        "column": 68
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "string",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": false
+    }
+  },
+  "properties": {
+    "name": {
+      "type": "property",
+      "label": "name",
+      "description": "A descriptive name for the store. This is typically used for\ndebugging, logging, and  data proxies.",
+      "code": "name: NGN.const(NGN.coalesce(cfg.name, 'Untitled Data Store'))",
+      "start": {
+        "line": 50,
+        "column": 6
+      },
+      "end": {
+        "line": 50,
+        "column": 68
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "string",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": false
+    },
+    "METADATA": {
+      "type": "property",
+      "label": "METADATA",
+      "description": null,
+      "code": "METADATA: NGN.private({\r\n        // Holds the models/records\r\n        records: [],\r\n\r\n        /**\r\n         * @cfgproperty {NGN.DATA.Model} model\r\n         * An NGN Data Model to which data records conform.\r\n         */\r\n        Model: NGN.coalesce(cfg.model),\r\n\r\n        /**\r\n         * @cfg {boolean} [allowDuplicates=true]\r\n         * Set to `false` to prevent duplicate records from being added.\r\n         * If a duplicate record is added, it will be ignored and an\r\n         * error will be thrown.\r\n         *\r\n         * **Identifying duplicates _may_ be slow** on data sets with 200+ records.\r\n         * Uniqueness is determined by a checksum of the current NGN.DATA.Model#data\r\n         * of a record. The amount of time required to generate a checksum can range\r\n         * from 3ms to 150ms per record depending on data complexity.\r\n         *\r\n         * In most scenarios, the performance impact will be negligible/indistinguishable\r\n         * to the naked eye. However; if an application experiences slow data\r\n         * load or processing times, setting this to `false` may help.\r\n         */\r\n        allowDuplicates: NGN.coalesce(cfg.allowDuplicates, true),\r\n\r\n        /**\r\n         * @cfg {boolean} [errorOnDuplicate=false]\r\n         * Set to `true` to throw an error when a duplicate record is detected.\r\n         * If this is not set, it will default to the value of #allowDuplicates.\r\n         * If #allowDuplicates is not defined either, this will be `true`\r\n         */\r\n        errorOnDuplicate: NGN.coalesce(cfg.errorOnDuplicate, cfg.allowDuplicates, false),\r\n\r\n        /**\r\n         * @cfg {boolean} [allowInvalid=true]\r\n         * Allow invalid records to be added to the store.\r\n         */\r\n        allowInvalid: NGN.coalesce(cfg.allowInvalid, true),\r\n\r\n        /**\r\n         * @cfg {boolean} [errorOnInvalid=false]\r\n         * Set to `true` to throw an error when an attempt is made to add an\r\n         * invalid record.\r\n         */\r\n        errorOnInvalid: NGN.coalesce(cfg.errorOnInvalid, cfg.allowInvalid, false),\r\n\r\n        /**\r\n         * @cfgproperty {boolean} [autoRemoveExpiredRecords=true]\r\n         * When set to `true`, the store will automatically delete expired records.\r\n         */\r\n        autoRemoveExpiredRecords: NGN.coalesce(cfg.autoRemoveExpiredRecords, true),\r\n\r\n        /**\r\n         * @cfg {boolean} [softDelete=false]\r\n         * When set to `true`, the store makes a copy of a record before removing\r\n         * it from the store. The store will still emit a `record.delete` event,\r\n         * and it will still behanve as though the record has been completely\r\n         * removed. However; the record copy can be retrieved using the #restore\r\n         * method.\r\n         *\r\n         * Since it is not always desirable to store a copy of every deleted\r\n         * record indefinitely, it is possible to expire and permanently remove\r\n         * records by setting the #softDeleteTtl.\r\n         *\r\n         * ```js\r\n         * var People = new NGN.DATA.Store({\r\n         *   model: Person,\r\n         *   softDelete: true,\r\n         *   softDeleteTtl: 10000\r\n         * })\r\n         *\r\n         * People.add(somePerson)\r\n         *\r\n         * var removedRecordId\r\n         * People.once('record.delete', function (record) {\r\n         *   removedRecordId = record.id\r\n         * })\r\n         *\r\n         * People.remove(somePerson)\r\n         *\r\n         * setTimeout(function () {\r\n         *   People.restore(removedRecordId)\r\n         * }, 5000)\r\n         *\r\n         * ```\r\n         *\r\n         * The code above creates a new store and adds a person to it.\r\n         * Then a placeholder variable (`removedRecordId`) is created.\r\n         * Next, a one-time event listener is added to the store, specifically\r\n         * for handling the removal of a record. Then the record is removed,\r\n         * which triggers the `record.delete` event, which populates\r\n         * `removedRecordId` with the ID of the record that was deleted.\r\n         * Finally, the code waits for 5 seconds, then restores the record. If\r\n         * the #restore method _wasn't_ called, the record would be purged\r\n         * from memory after 10 seconds (because `softDeleteTtl` is set to 10000\r\n         * milliseconds).\r\n         */\r\n        softDelete: NGN.coalesce(cfg.softDelete, false),\r\n\r\n        /**\r\n         * @cfg {number} [softDeleteTtl=-1]\r\n         * This is the number of milliseconds the store waits before purging a\r\n         * soft-deleted record from memory. `-1` = Infinite (no TTL).\r\n         */\r\n        softDeleteTtl: NGN.coalesce(cfg.softDeleteTtl, -1),\r\n\r\n        // ARCHIVE contains soft deleted records\r\n\r\n        /**\r\n         * @cfg {Number} [FIFO=-1]\r\n         * Configures the store to use \"**F**irst **I**n **F**irst **O**ut\"\r\n         * record processing when it reaches a maximum number of records.\r\n         *\r\n         * For example, assume `FIFO=10`. When the 11th record is added, it\r\n         * will replace the oldest record (i.e. the 1st). This guarantees the\r\n         * store will never have more than 10 records at any given time and it\r\n         * will always maintain the latest records.\r\n         *\r\n         * FIFO and LIFO cannot be applied at the same time.\r\n         *\r\n         * **BE CAREFUL** when using this in combination with #insert,\r\n         * #insertBefore, or #insertAfter. FIFO is applied _after_ the record\r\n         * is added to the store but _before_ it is moved to the desired index.\r\n         */\r\n        fifo: NGN.coalesce(cfg.FIFO, -1),\r\n\r\n        /**\r\n         * @cfg {Number} [LIFO=-1]\r\n         * Configures the store to use \"**L**ast **I**n **F**irst **O**ut\"\r\n         * record processing when it reaches a maximum number of records.\r\n         *\r\n         * This methos acts in the opposite manner as #FIFO. However; for\r\n         * all intents and purposes, this merely replaces the last record in\r\n         * the store when a new record is added.\r\n         *\r\n         * For example, assume `FIFO=10`. When the 11th record is added, it\r\n         * will replace the latest record (i.e. the 10th). This guarantees the\r\n         * store will never have more than 10 records at any given time. Every\r\n         * time a new record is added (assuming the store already has the maximum\r\n         * allowable records), it replaces the last record (10th) with the new\r\n         * record.\r\n         *\r\n         * LIFO and FIFO cannot be applied at the same time.\r\n         *\r\n         * **BE CAREFUL** when using this in combination with #insert,\r\n         * #insertBefore, or #insertAfter. LIFO is applied _after_ the record\r\n         * is added to the store but _before_ it is moved to the desired index.\r\n         */\r\n        lifo: NGN.coalesce(cfg.LIFO, -1),\r\n\r\n        /**\r\n         * @cfg {Number} [maxRecords=-1]\r\n         * Setting this will prevent new records from being added past this limit.\r\n         * Attempting to add a record to the store beyond it's maximum will throw\r\n         * an error.\r\n         */\r\n        maxRecords: NGN.coalesce(cfg.maxRecords, -1),\r\n\r\n        /**\r\n         * @cfg {Number} [minRecords=0]\r\n         * Setting this will prevent removal of records if the removal would\r\n         * decrease the count below this limit.\r\n         * Attempting to remove a record below the store's minimum will throw\r\n         * an error.\r\n         */\r\n        minRecords: NGN.coalesce(cfg.minRecords, 0),\r\n\r\n        /**\r\n         * @cfg {Number} [autocompact=50000]\r\n         * Identify the number of deletions that should occur before\r\n         * the store is compacted. See #compact. Set this to any value\r\n         * below `100` (the minimum) to disable autocompact.\r\n         */\r\n        autocompact: NGN.coalesce(cfg.autocompact, 50000),\r\n\r\n        /**\r\n         * @cfgproperty {object} fieldmap\r\n         * An object mapping model attribute names to data storage field names.\r\n         *\r\n         * _Example_\r\n         * ```\r\n         * {\r\n         *   ModelFieldName: 'inputName',\r\n         *   father: 'dad',\r\n         *   email: 'eml',\r\n         *   image: 'img',\r\n         *   displayName: 'dn',\r\n         *   firstName: 'gn',\r\n         *   lastName: 'sn',\r\n         *   middleName: 'mn',\r\n         *   gender: 'sex',\r\n         *   dob: 'bd'\r\n         * }\r\n         * ```\r\n         */\r\n        MAP: NGN.coalesce(cfg.fieldmap),\r\n\r\n        EVENTS: new Set([\r\n          'record.duplicate',\r\n          'record.create',\r\n          'record.update',\r\n          'record.delete',\r\n          'record.restored',\r\n          'record.purged',\r\n          'record.move',\r\n          'record.invalid',\r\n          'record.valid',\r\n          'clear',\r\n          'filter.create',\r\n          'filter.delete',\r\n          'index.create',\r\n          'index.delete',\r\n          'compact.start',\r\n          'compact.complete'\r\n        ]),\r\n\r\n        /**\r\n         * @cfg {boolean} [audit=false]\r\n         * Enable auditing to support #undo/#redo operations. This creates and\r\n         * manages a NGN.DATA.TransactionLog.\r\n         */\r\n        AUDITABLE: NGN.coalesce(cfg.audit, false),\r\n        AUDITLOG: NGN.coalesce(cfg.audit, false) ? new NGN.DATA.TransactionLog() : null,\r\n        AUDIT_HANDLER: (change) => {\r\n          if (change.hasOwnProperty('cursor')) {\r\n            this.METADATA.AUDITLOG.commit(this.METADATA.getAuditMap())\r\n          }\r\n        },\r\n\r\n        // The first and last indexes are maintained to determine which active\r\n        // record is considered first/last. Sometimes data is filtered out,\r\n        // so the first/last active record is not guaranteed to represent the\r\n        // first/last actual record. These indexes are maintained to prevent\r\n        // unnecessary iteration in large data sets.\r\n        FIRSTRECORDINDEX: 0,\r\n        LASTRECORDINDEX: 0,\r\n\r\n        /**\r\n         * @cfg {array} [index]\r\n         * An array of #model fields that will be indexed.\r\n         * See NGN.DATA.Index for details.\r\n         */\r\n        INDEX: null\r\n      })",
+      "start": {
+        "line": 52,
+        "column": 6
+      },
+      "end": {
+        "line": 297,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "PRIVATE": {
+      "type": "property",
+      "label": "PRIVATE",
+      "description": null,
+      "code": "PRIVATE: NGN.privateconst({\r\n        STUB: Symbol('record.stub'),\r\n\r\n        // A private indexing method\r\n        INDEX: function (record, delta) {\r\n          if (typeof this.event === 'symbol') {\r\n            switch (this.event) {\r\n              case me.PRIVATE.EVENT.CREATE_RECORD:\r\n                me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].add(record[field], record.OID))\r\n                break\r\n\r\n              case me.PRIVATE.EVENT.DELETE_RECORD:\r\n                me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].remove(record.OID, record[field]))\r\n                break\r\n\r\n              case me.PRIVATE.EVENT.LOAD_RECORDS:\r\n                for (let i = 0; i < me.METADATA.records.length; i++) {\r\n                  me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].add(me.METADATA.records[i][field], me.METADATA.records[i].OID))\r\n                }\r\n\r\n                break\r\n\r\n              case me.PRIVATE.EVENT.DELETE_RECORD_FIELD:\r\n                if (me.METADATA.INDEXFIELDS.has(record.field.name)) {\r\n                  me.METADATA.INDEX[record.field.name].remove(record.record.OID, record.field.value)\r\n                }\r\n\r\n                break\r\n            }\r\n          } else {\r\n            switch (this.event) {\r\n              case 'record.update':\r\n                if (me.METADATA.INDEXFIELDS.has(delta.field.name)) {\r\n                  me.METADATA.INDEX[delta.field.name].update(record.OID, delta.old, delta.new)\r\n                }\r\n                break\r\n\r\n              case 'clear':\r\n                me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].reset())\r\n                break\r\n            }\r\n          }\r\n        },\r\n\r\n        // Contains a map of all records\r\n        RECORDMAP: new Map(),\r\n\r\n        // A reference to active records\r\n        ACTIVERECORDMAP: null,\r\n\r\n        // A reference to filtered records (non-active/non-deleted)\r\n        FILTEREDRECORDMAP: null,\r\n\r\n        // Internal events\r\n        EVENT: {\r\n          CREATE_RECORD: Symbol('record.create'),\r\n          DELETE_RECORD: Symbol('record.delete'),\r\n          DELETE_RECORD_FIELD: Symbol('records.field.delete'),\r\n          LOAD_RECORDS: Symbol('records.load')\r\n        },\r\n\r\n        // Makes sure the model configuration specifies a valid and indexable field.\r\n        checkModelIndexField: (field) => {\r\n          let metaconfig = this.METADATA.Model.prototype.CONFIGURATION\r\n\r\n          if (metaconfig.fields && metaconfig.fields.hasOwnProperty(field)) {\r\n            if (metaconfig.fields[field] !== null) {\r\n              if (['model', 'store', 'entity', 'function'].indexOf(NGN.typeof(metaconfig.fields[field])) >= 0) {\r\n                throw new Error(`Cannot create index for \"${field}\" field. Only basic NGN.DATA.Field types can be indexed. Relationship and virtual fields cannot be indexed.`)\r\n              } else if (NGN.typeof(metaconfig.fields[field]) === 'object') {\r\n                if (['model', 'store', 'entity', 'function'].indexOf(NGN.typeof(NGN.coalesce(metaconfig.fields[field].type))) >= 0) {\r\n                  throw new Error(`Cannot create index for \"${field}\" field. Only basic NGN.DATA.Field types can be indexed. Relationship and virtual fields cannot be indexed.`)\r\n                }\r\n              }\r\n            }\r\n          } else {\r\n            throw new Error(`Cannot create index for unrecognized field \"${field}\".`)\r\n          }\r\n        },\r\n\r\n        // Get the type of field from the model definition\r\n        getModelFieldType: (field) => {\r\n          let metaconfig = this.METADATA.Model.prototype.CONFIGURATION\r\n\r\n          if (metaconfig.fields[field] === null) {\r\n            return NGN.typeof(metaconfig.fields[field])\r\n          }\r\n\r\n          if (metaconfig.fields[field].type) {\r\n            return NGN.typeof(metaconfig.fields[field].type)\r\n          }\r\n\r\n          if (metaconfig.fields[field].default) {\r\n            return NGN.typeof(metaconfig.fields[field].default)\r\n          }\r\n\r\n          return NGN.typeof(NGN.coalesce(metaconfig.fields[field]))\r\n        },\r\n\r\n        // Add a record\r\n        addRecord: (data, suppressEvents = false) => {\r\n          const record = new me.METADATA.Model(data)\r\n\r\n          if (!(record instanceof NGN.DATA.Entity)) {\r\n            throw new Error(`Only a NGN.DATA.Model or JSON object may be used in NGN.DATA.Store#add. Received a \"${NGN.typeof(data)}\" value.`)\r\n          }\r\n\r\n          // Prevent invalid record addition (if configured)\r\n          if (!me.METADATA.allowInvalid && !record.valid) {\r\n            NGN.WARN(`An attempt to add invalid data to the \"${this.name}\" store was prevented. The following fields are invalid: ${Array.from(record.METADATA.invalidFieldNames.keys()).join(', ')}`)\r\n\r\n            if (!suppressEvents) {\r\n              this.emit('record.invalid', record)\r\n            }\r\n\r\n            if (this.METADATA.errorOnInvalid) {\r\n              throw new Error(`Invalid data cannot be added to the \"${this.name}\" store.`)\r\n            }\r\n          }\r\n\r\n          // If duplicates are prevented, check the new data.\r\n          if (!me.METADATA.allowDuplicates) {\r\n            for (let i = 0; i < this.METADATA.records.length; i++) {\r\n              if (this.METADATA.records[i].checksum === record.checksum) {\r\n                NGN.WARN(`An attempt to add a duplicate record to the \"${this.name}\" store was prevented.`)\r\n\r\n                if (!suppressEvents) {\r\n                  this.emit('record.duplicate', record)\r\n                }\r\n\r\n                if (this.METADATA.errorOnDuplicate) {\r\n                  throw new Error(`Duplicate records are not allowed in the \"${this.name}\" data store.`)\r\n                }\r\n\r\n                break\r\n              }\r\n            }\r\n          }\r\n\r\n          // Handle special record count processing (LIFO/FIFO support)\r\n          if (me.METADATA.lifo > 0 && me.METADATA.records.length + 1 > me.METADATA.lifo) {\r\n            me.remove(me.METADATA.records.length - 1, suppressEvents)\r\n          } else if (this.METADATA.fifo > 0 && me.METADATA.records.length + 1 > me.METADATA.fifo) {\r\n            me.remove(0, suppressEvents)\r\n          }\r\n\r\n          // Relay model events to this store.\r\n          // record.relay('*', this, 'record.')\r\n          record.on('*', function () {\r\n            switch (this.event) {\r\n              // case 'field.update':\r\n              // case 'field.delete':\r\n              //   // TODO: Update indices\r\n              //   return\r\n\r\n              case 'field.invalid':\r\n              case 'field.valid':\r\n                return me.emit(this.event.replace('field.', 'record.'), record)\r\n\r\n              case 'expired':\r\n                // TODO: Handle expiration\r\n            }\r\n          })\r\n\r\n          delete record.METADATA.store\r\n          Object.defineProperty(record.METADATA, 'store', NGN.get(() => me))\r\n\r\n          // Indexing is handled in an internal event handler\r\n          me.METADATA.records.push(record)\r\n\r\n          // Add the record to the map for efficient retrievel by OID\r\n          me.PRIVATE.RECORDMAP.set(record.OID, me.METADATA.records.length - 1)\r\n\r\n          return record\r\n        },\r\n\r\n        convertStubToRecord: (index, record) => {\r\n          if (record.hasOwnProperty(this.PRIVATE.STUB)) {\r\n            let newRecord = this.PRIVATE.addRecord(record.metadata, false)\r\n            newRecord.OID = record.OID\r\n\r\n            this.METADATA.records[index] = newRecord\r\n\r\n            return newRecord\r\n          } else {\r\n            return record\r\n          }\r\n        }\r\n      })",
+      "start": {
+        "line": 300,
+        "column": 6
+      },
+      "end": {
+        "line": 488,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "delete": {
+      "type": "property",
+      "label": "delete",
+      "description": null,
+      "code": "delete: NGN.const(NGN.deprecate(this.remove, 'Store.delete is deprecated. Use Store.remove instead.'))",
+      "start": {
+        "line": 491,
+        "column": 6
+      },
+      "end": {
+        "line": 491,
+        "column": 108
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "snapshots": {
+      "type": "property",
+      "label": "snapshots",
+      "description": null,
+      "code": "get snapshots () {\r\n    return NGN.coalesce(this.snapshotarchive, [])\r\n  }",
+      "start": {
+        "line": 557,
+        "column": 2
+      },
+      "end": {
+        "line": 559,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "history": {
+      "type": "property",
+      "label": "history",
+      "description": null,
+      "code": "get history () {\r\n    NGN.WARN('history is deprecated. Use NGN.DATA.Store#changelog instead.')\r\n    return this.changelog\r\n  }",
+      "start": {
+        "line": 562,
+        "column": 2
+      },
+      "end": {
+        "line": 565,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "recordCount": {
+      "type": "property",
+      "label": "recordCount",
+      "description": null,
+      "code": "get recordCount () {\r\n    NGN.WARN('recordCount is deprecated. Use NGN.DATA.Store#size instead.')\r\n    return this.size\r\n  }",
+      "start": {
+        "line": 568,
+        "column": 2
+      },
+      "end": {
+        "line": 571,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "size": {
+      "type": "property",
+      "label": "size",
+      "description": null,
+      "code": "get size () {\r\n    return this.PRIVATE.ACTIVERECORDS.size\r\n  }",
+      "start": {
+        "line": 578,
+        "column": 2
+      },
+      "end": {
+        "line": 580,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "length": {
+      "type": "property",
+      "label": "length",
+      "description": null,
+      "code": "get length () {\r\n    return this.METADATA.records.length\r\n  }",
+      "start": {
+        "line": 587,
+        "column": 2
+      },
+      "end": {
+        "line": 589,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "first": {
+      "type": "property",
+      "label": "first",
+      "description": null,
+      "code": "get first () {\r\n    let record = NGN.coalesce(this.METADATA.records[this.METADATA.FIRSTRECORDINDEX])\r\n\r\n    return this.PRIVATE.convertStubToRecord(this.METADATA.FIRSTRECORDINDEX, record)\r\n    // return NGN.coalesce(this.METADATA.records[this.METADATA.FIRSTRECORDINDEX])\r\n  }",
+      "start": {
+        "line": 596,
+        "column": 2
+      },
+      "end": {
+        "line": 601,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "last": {
+      "type": "property",
+      "label": "last",
+      "description": null,
+      "code": "get last () {\r\n    let record = NGN.coalesce(this.METADATA.records[this.METADATA.LASTRECORDINDEX])\r\n\r\n    return this.PRIVATE.convertStubToRecord(this.METADATA.LASTRECORDINDEX, record)\r\n  }",
+      "start": {
+        "line": 608,
+        "column": 2
+      },
+      "end": {
+        "line": 612,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "data": {
+      "type": "property",
+      "label": "data",
+      "description": null,
+      "code": "get data () {\r\n    const recordList = this.PRIVATE.ACTIVERECORDS\r\n\r\n    // If no records exist, skip\r\n    if (recordList.size === 0) {\r\n      return []\r\n    }\r\n\r\n    let rec = this.PRIVATE.convertStubToRecord(this.METADATA.FIRSTRECORDINDEX, this.METADATA.records[this.METADATA.FIRSTRECORDINDEX])\r\n\r\n    if (this.METADATA.MAP === null) {\r\n      this.METADATA.MAP = NGN.coalesce(rec.MAP)\r\n    }\r\n\r\n    let defaults = null\r\n\r\n    if (rec instanceof NGN.DATA.Entity) {\r\n      let fieldDefinitions = rec.fieldDefinitions\r\n      let fields = Object.keys(fieldDefinitions)\r\n\r\n      defaults = {}\r\n\r\n      fields.forEach(field => {\r\n        if (!fieldDefinitions[field].hidden && !fieldDefinitions[field].virtual) {\r\n          defaults[field] = fieldDefinitions[field].default\r\n        }\r\n      })\r\n    }\r\n\r\n    const result = []\r\n    // const fields = defaults !== null ? Object.keys(defaults) : []\r\n\r\n    // Iterate through set\r\n    recordList.forEach(index => {\r\n      if (this.METADATA.records[index] !== null) {\r\n        // If the value is a stub, map it.\r\n        if (this.METADATA.records[index].hasOwnProperty(this.PRIVATE.STUB)) {\r\n          let applicableData = Object.assign({}, defaults)\r\n          let data = Object.assign(applicableData, this.METADATA.records[index].metadata)\r\n\r\n          if (this.METADATA.MAP !== null) {\r\n            result.push(this.METADATA.MAP.applyInverseMap(data))\r\n          } else {\r\n            result.push(data)\r\n          }\r\n        } else {\r\n          result.push(this.METADATA.records[index].data)\r\n        }\r\n      }\r\n    })\r\n\r\n    return result\r\n  }",
+      "start": {
+        "line": 620,
+        "column": 2
+      },
+      "end": {
+        "line": 672,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "representation": {
+      "type": "property",
+      "label": "representation",
+      "description": null,
+      "code": "get representation () {\r\n    const result = []\r\n    const recordList = this.PRIVATE.ACTIVERECORDS\r\n\r\n    recordList.forEach(index => {\r\n      if (this.METADATA.records[index] !== null) {\r\n        result.push(this.METADATA.records[index].representation)\r\n      }\r\n    })\r\n\r\n    return result\r\n  }",
+      "start": {
+        "line": 679,
+        "column": 2
+      },
+      "end": {
+        "line": 690,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "auditable": {
+      "type": "property",
+      "label": "auditable",
+      "description": null,
+      "code": "set auditable (value) {\r\n    value = NGN.forceBoolean(value)\r\n\r\n    if (value !== this.METADATA.AUDITABLE) {\r\n      this.METADATA.AUDITABLE = value\r\n      this.METADATA.AUDITLOG = value ? new NGN.DATA.TransactionLog() : null\r\n    }\r\n  }",
+      "start": {
+        "line": 696,
+        "column": 2
+      },
+      "end": {
+        "line": 703,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "model": {
+      "type": "property",
+      "label": "model",
+      "description": null,
+      "code": "get model () {\r\n    return this.METADATA.Model\r\n  }",
+      "start": {
+        "line": 705,
+        "column": 2
+      },
+      "end": {
+        "line": 707,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "map": {
+      "type": "property",
+      "label": "map",
+      "description": null,
+      "code": "get map () {\r\n    return this.METADATA.MAP\r\n  }",
+      "start": {
+        "line": 719,
+        "column": 2
+      },
+      "end": {
+        "line": 721,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "indexedFieldNames": {
+      "type": "property",
+      "label": "indexedFieldNames",
+      "description": null,
+      "code": "get indexedFieldNames () {\r\n    if (this.METADATA.INDEXFIELDS) {\r\n      return Array.from(this.METADATA.INDEXFIELDS)\r\n    } else {\r\n      return []\r\n    }\r\n  }",
+      "start": {
+        "line": 727,
+        "column": 2
+      },
+      "end": {
+        "line": 733,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor (cfg = {}) {\r\n    if (NGN.typeof(cfg) === 'model') {\r\n      cfg = { model: cfg }\r\n    } else if (!cfg.model || !NGN.DATA.UTILITY.isDataModel(cfg.model)) {\r\n      throw new InvalidConfigurationError('Missing or invalid \"model\" configuration property.')\r\n    }\r\n\r\n    super()\r\n\r\n    const me = this\r\n\r\n    Object.defineProperties(this, {\r\n      /**\r\n       * @cfgproperty {string} [name]\r\n       * A descriptive name for the store. This is typically used for\r\n       * debugging, logging, and (somtimes) data proxies.\r\n       */\r\n      name: NGN.const(NGN.coalesce(cfg.name, 'Untitled Data Store')),\r\n\r\n      METADATA: NGN.private({\r\n        // Holds the models/records\r\n        records: [],\r\n\r\n        /**\r\n         * @cfgproperty {NGN.DATA.Model} model\r\n         * An NGN Data Model to which data records conform.\r\n         */\r\n        Model: NGN.coalesce(cfg.model),\r\n\r\n        /**\r\n         * @cfg {boolean} [allowDuplicates=true]\r\n         * Set to `false` to prevent duplicate records from being added.\r\n         * If a duplicate record is added, it will be ignored and an\r\n         * error will be thrown.\r\n         *\r\n         * **Identifying duplicates _may_ be slow** on data sets with 200+ records.\r\n         * Uniqueness is determined by a checksum of the current NGN.DATA.Model#data\r\n         * of a record. The amount of time required to generate a checksum can range\r\n         * from 3ms to 150ms per record depending on data complexity.\r\n         *\r\n         * In most scenarios, the performance impact will be negligible/indistinguishable\r\n         * to the naked eye. However; if an application experiences slow data\r\n         * load or processing times, setting this to `false` may help.\r\n         */\r\n        allowDuplicates: NGN.coalesce(cfg.allowDuplicates, true),\r\n\r\n        /**\r\n         * @cfg {boolean} [errorOnDuplicate=false]\r\n         * Set to `true` to throw an error when a duplicate record is detected.\r\n         * If this is not set, it will default to the value of #allowDuplicates.\r\n         * If #allowDuplicates is not defined either, this will be `true`\r\n         */\r\n        errorOnDuplicate: NGN.coalesce(cfg.errorOnDuplicate, cfg.allowDuplicates, false),\r\n\r\n        /**\r\n         * @cfg {boolean} [allowInvalid=true]\r\n         * Allow invalid records to be added to the store.\r\n         */\r\n        allowInvalid: NGN.coalesce(cfg.allowInvalid, true),\r\n\r\n        /**\r\n         * @cfg {boolean} [errorOnInvalid=false]\r\n         * Set to `true` to throw an error when an attempt is made to add an\r\n         * invalid record.\r\n         */\r\n        errorOnInvalid: NGN.coalesce(cfg.errorOnInvalid, cfg.allowInvalid, false),\r\n\r\n        /**\r\n         * @cfgproperty {boolean} [autoRemoveExpiredRecords=true]\r\n         * When set to `true`, the store will automatically delete expired records.\r\n         */\r\n        autoRemoveExpiredRecords: NGN.coalesce(cfg.autoRemoveExpiredRecords, true),\r\n\r\n        /**\r\n         * @cfg {boolean} [softDelete=false]\r\n         * When set to `true`, the store makes a copy of a record before removing\r\n         * it from the store. The store will still emit a `record.delete` event,\r\n         * and it will still behanve as though the record has been completely\r\n         * removed. However; the record copy can be retrieved using the #restore\r\n         * method.\r\n         *\r\n         * Since it is not always desirable to store a copy of every deleted\r\n         * record indefinitely, it is possible to expire and permanently remove\r\n         * records by setting the #softDeleteTtl.\r\n         *\r\n         * ```js\r\n         * var People = new NGN.DATA.Store({\r\n         *   model: Person,\r\n         *   softDelete: true,\r\n         *   softDeleteTtl: 10000\r\n         * })\r\n         *\r\n         * People.add(somePerson)\r\n         *\r\n         * var removedRecordId\r\n         * People.once('record.delete', function (record) {\r\n         *   removedRecordId = record.id\r\n         * })\r\n         *\r\n         * People.remove(somePerson)\r\n         *\r\n         * setTimeout(function () {\r\n         *   People.restore(removedRecordId)\r\n         * }, 5000)\r\n         *\r\n         * ```\r\n         *\r\n         * The code above creates a new store and adds a person to it.\r\n         * Then a placeholder variable (`removedRecordId`) is created.\r\n         * Next, a one-time event listener is added to the store, specifically\r\n         * for handling the removal of a record. Then the record is removed,\r\n         * which triggers the `record.delete` event, which populates\r\n         * `removedRecordId` with the ID of the record that was deleted.\r\n         * Finally, the code waits for 5 seconds, then restores the record. If\r\n         * the #restore method _wasn't_ called, the record would be purged\r\n         * from memory after 10 seconds (because `softDeleteTtl` is set to 10000\r\n         * milliseconds).\r\n         */\r\n        softDelete: NGN.coalesce(cfg.softDelete, false),\r\n\r\n        /**\r\n         * @cfg {number} [softDeleteTtl=-1]\r\n         * This is the number of milliseconds the store waits before purging a\r\n         * soft-deleted record from memory. `-1` = Infinite (no TTL).\r\n         */\r\n        softDeleteTtl: NGN.coalesce(cfg.softDeleteTtl, -1),\r\n\r\n        // ARCHIVE contains soft deleted records\r\n\r\n        /**\r\n         * @cfg {Number} [FIFO=-1]\r\n         * Configures the store to use \"**F**irst **I**n **F**irst **O**ut\"\r\n         * record processing when it reaches a maximum number of records.\r\n         *\r\n         * For example, assume `FIFO=10`. When the 11th record is added, it\r\n         * will replace the oldest record (i.e. the 1st). This guarantees the\r\n         * store will never have more than 10 records at any given time and it\r\n         * will always maintain the latest records.\r\n         *\r\n         * FIFO and LIFO cannot be applied at the same time.\r\n         *\r\n         * **BE CAREFUL** when using this in combination with #insert,\r\n         * #insertBefore, or #insertAfter. FIFO is applied _after_ the record\r\n         * is added to the store but _before_ it is moved to the desired index.\r\n         */\r\n        fifo: NGN.coalesce(cfg.FIFO, -1),\r\n\r\n        /**\r\n         * @cfg {Number} [LIFO=-1]\r\n         * Configures the store to use \"**L**ast **I**n **F**irst **O**ut\"\r\n         * record processing when it reaches a maximum number of records.\r\n         *\r\n         * This methos acts in the opposite manner as #FIFO. However; for\r\n         * all intents and purposes, this merely replaces the last record in\r\n         * the store when a new record is added.\r\n         *\r\n         * For example, assume `FIFO=10`. When the 11th record is added, it\r\n         * will replace the latest record (i.e. the 10th). This guarantees the\r\n         * store will never have more than 10 records at any given time. Every\r\n         * time a new record is added (assuming the store already has the maximum\r\n         * allowable records), it replaces the last record (10th) with the new\r\n         * record.\r\n         *\r\n         * LIFO and FIFO cannot be applied at the same time.\r\n         *\r\n         * **BE CAREFUL** when using this in combination with #insert,\r\n         * #insertBefore, or #insertAfter. LIFO is applied _after_ the record\r\n         * is added to the store but _before_ it is moved to the desired index.\r\n         */\r\n        lifo: NGN.coalesce(cfg.LIFO, -1),\r\n\r\n        /**\r\n         * @cfg {Number} [maxRecords=-1]\r\n         * Setting this will prevent new records from being added past this limit.\r\n         * Attempting to add a record to the store beyond it's maximum will throw\r\n         * an error.\r\n         */\r\n        maxRecords: NGN.coalesce(cfg.maxRecords, -1),\r\n\r\n        /**\r\n         * @cfg {Number} [minRecords=0]\r\n         * Setting this will prevent removal of records if the removal would\r\n         * decrease the count below this limit.\r\n         * Attempting to remove a record below the store's minimum will throw\r\n         * an error.\r\n         */\r\n        minRecords: NGN.coalesce(cfg.minRecords, 0),\r\n\r\n        /**\r\n         * @cfg {Number} [autocompact=50000]\r\n         * Identify the number of deletions that should occur before\r\n         * the store is compacted. See #compact. Set this to any value\r\n         * below `100` (the minimum) to disable autocompact.\r\n         */\r\n        autocompact: NGN.coalesce(cfg.autocompact, 50000),\r\n\r\n        /**\r\n         * @cfgproperty {object} fieldmap\r\n         * An object mapping model attribute names to data storage field names.\r\n         *\r\n         * _Example_\r\n         * ```\r\n         * {\r\n         *   ModelFieldName: 'inputName',\r\n         *   father: 'dad',\r\n         *   email: 'eml',\r\n         *   image: 'img',\r\n         *   displayName: 'dn',\r\n         *   firstName: 'gn',\r\n         *   lastName: 'sn',\r\n         *   middleName: 'mn',\r\n         *   gender: 'sex',\r\n         *   dob: 'bd'\r\n         * }\r\n         * ```\r\n         */\r\n        MAP: NGN.coalesce(cfg.fieldmap),\r\n\r\n        EVENTS: new Set([\r\n          'record.duplicate',\r\n          'record.create',\r\n          'record.update',\r\n          'record.delete',\r\n          'record.restored',\r\n          'record.purged',\r\n          'record.move',\r\n          'record.invalid',\r\n          'record.valid',\r\n          'clear',\r\n          'filter.create',\r\n          'filter.delete',\r\n          'index.create',\r\n          'index.delete',\r\n          'compact.start',\r\n          'compact.complete'\r\n        ]),\r\n\r\n        /**\r\n         * @cfg {boolean} [audit=false]\r\n         * Enable auditing to support #undo/#redo operations. This creates and\r\n         * manages a NGN.DATA.TransactionLog.\r\n         */\r\n        AUDITABLE: NGN.coalesce(cfg.audit, false),\r\n        AUDITLOG: NGN.coalesce(cfg.audit, false) ? new NGN.DATA.TransactionLog() : null,\r\n        AUDIT_HANDLER: (change) => {\r\n          if (change.hasOwnProperty('cursor')) {\r\n            this.METADATA.AUDITLOG.commit(this.METADATA.getAuditMap())\r\n          }\r\n        },\r\n\r\n        // The first and last indexes are maintained to determine which active\r\n        // record is considered first/last. Sometimes data is filtered out,\r\n        // so the first/last active record is not guaranteed to represent the\r\n        // first/last actual record. These indexes are maintained to prevent\r\n        // unnecessary iteration in large data sets.\r\n        FIRSTRECORDINDEX: 0,\r\n        LASTRECORDINDEX: 0,\r\n\r\n        /**\r\n         * @cfg {array} [index]\r\n         * An array of #model fields that will be indexed.\r\n         * See NGN.DATA.Index for details.\r\n         */\r\n        INDEX: null\r\n      }),\r\n\r\n      // Internal attributes that should not be extended.\r\n      PRIVATE: NGN.privateconst({\r\n        STUB: Symbol('record.stub'),\r\n\r\n        // A private indexing method\r\n        INDEX: function (record, delta) {\r\n          if (typeof this.event === 'symbol') {\r\n            switch (this.event) {\r\n              case me.PRIVATE.EVENT.CREATE_RECORD:\r\n                me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].add(record[field], record.OID))\r\n                break\r\n\r\n              case me.PRIVATE.EVENT.DELETE_RECORD:\r\n                me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].remove(record.OID, record[field]))\r\n                break\r\n\r\n              case me.PRIVATE.EVENT.LOAD_RECORDS:\r\n                for (let i = 0; i < me.METADATA.records.length; i++) {\r\n                  me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].add(me.METADATA.records[i][field], me.METADATA.records[i].OID))\r\n                }\r\n\r\n                break\r\n\r\n              case me.PRIVATE.EVENT.DELETE_RECORD_FIELD:\r\n                if (me.METADATA.INDEXFIELDS.has(record.field.name)) {\r\n                  me.METADATA.INDEX[record.field.name].remove(record.record.OID, record.field.value)\r\n                }\r\n\r\n                break\r\n            }\r\n          } else {\r\n            switch (this.event) {\r\n              case 'record.update':\r\n                if (me.METADATA.INDEXFIELDS.has(delta.field.name)) {\r\n                  me.METADATA.INDEX[delta.field.name].update(record.OID, delta.old, delta.new)\r\n                }\r\n                break\r\n\r\n              case 'clear':\r\n                me.METADATA.INDEXFIELDS.forEach(field => me.METADATA.INDEX[field].reset())\r\n                break\r\n            }\r\n          }\r\n        },\r\n\r\n        // Contains a map of all records\r\n        RECORDMAP: new Map(),\r\n\r\n        // A reference to active records\r\n        ACTIVERECORDMAP: null,\r\n\r\n        // A reference to filtered records (non-active/non-deleted)\r\n        FILTEREDRECORDMAP: null,\r\n\r\n        // Internal events\r\n        EVENT: {\r\n          CREATE_RECORD: Symbol('record.create'),\r\n          DELETE_RECORD: Symbol('record.delete'),\r\n          DELETE_RECORD_FIELD: Symbol('records.field.delete'),\r\n          LOAD_RECORDS: Symbol('records.load')\r\n        },\r\n\r\n        // Makes sure the model configuration specifies a valid and indexable field.\r\n        checkModelIndexField: (field) => {\r\n          let metaconfig = this.METADATA.Model.prototype.CONFIGURATION\r\n\r\n          if (metaconfig.fields && metaconfig.fields.hasOwnProperty(field)) {\r\n            if (metaconfig.fields[field] !== null) {\r\n              if (['model', 'store', 'entity', 'function'].indexOf(NGN.typeof(metaconfig.fields[field])) >= 0) {\r\n                throw new Error(`Cannot create index for \"${field}\" field. Only basic NGN.DATA.Field types can be indexed. Relationship and virtual fields cannot be indexed.`)\r\n              } else if (NGN.typeof(metaconfig.fields[field]) === 'object') {\r\n                if (['model', 'store', 'entity', 'function'].indexOf(NGN.typeof(NGN.coalesce(metaconfig.fields[field].type))) >= 0) {\r\n                  throw new Error(`Cannot create index for \"${field}\" field. Only basic NGN.DATA.Field types can be indexed. Relationship and virtual fields cannot be indexed.`)\r\n                }\r\n              }\r\n            }\r\n          } else {\r\n            throw new Error(`Cannot create index for unrecognized field \"${field}\".`)\r\n          }\r\n        },\r\n\r\n        // Get the type of field from the model definition\r\n        getModelFieldType: (field) => {\r\n          let metaconfig = this.METADATA.Model.prototype.CONFIGURATION\r\n\r\n          if (metaconfig.fields[field] === null) {\r\n            return NGN.typeof(metaconfig.fields[field])\r\n          }\r\n\r\n          if (metaconfig.fields[field].type) {\r\n            return NGN.typeof(metaconfig.fields[field].type)\r\n          }\r\n\r\n          if (metaconfig.fields[field].default) {\r\n            return NGN.typeof(metaconfig.fields[field].default)\r\n          }\r\n\r\n          return NGN.typeof(NGN.coalesce(metaconfig.fields[field]))\r\n        },\r\n\r\n        // Add a record\r\n        addRecord: (data, suppressEvents = false) => {\r\n          const record = new me.METADATA.Model(data)\r\n\r\n          if (!(record instanceof NGN.DATA.Entity)) {\r\n            throw new Error(`Only a NGN.DATA.Model or JSON object may be used in NGN.DATA.Store#add. Received a \"${NGN.typeof(data)}\" value.`)\r\n          }\r\n\r\n          // Prevent invalid record addition (if configured)\r\n          if (!me.METADATA.allowInvalid && !record.valid) {\r\n            NGN.WARN(`An attempt to add invalid data to the \"${this.name}\" store was prevented. The following fields are invalid: ${Array.from(record.METADATA.invalidFieldNames.keys()).join(', ')}`)\r\n\r\n            if (!suppressEvents) {\r\n              this.emit('record.invalid', record)\r\n            }\r\n\r\n            if (this.METADATA.errorOnInvalid) {\r\n              throw new Error(`Invalid data cannot be added to the \"${this.name}\" store.`)\r\n            }\r\n          }\r\n\r\n          // If duplicates are prevented, check the new data.\r\n          if (!me.METADATA.allowDuplicates) {\r\n            for (let i = 0; i < this.METADATA.records.length; i++) {\r\n              if (this.METADATA.records[i].checksum === record.checksum) {\r\n                NGN.WARN(`An attempt to add a duplicate record to the \"${this.name}\" store was prevented.`)\r\n\r\n                if (!suppressEvents) {\r\n                  this.emit('record.duplicate', record)\r\n                }\r\n\r\n                if (this.METADATA.errorOnDuplicate) {\r\n                  throw new Error(`Duplicate records are not allowed in the \"${this.name}\" data store.`)\r\n                }\r\n\r\n                break\r\n              }\r\n            }\r\n          }\r\n\r\n          // Handle special record count processing (LIFO/FIFO support)\r\n          if (me.METADATA.lifo > 0 && me.METADATA.records.length + 1 > me.METADATA.lifo) {\r\n            me.remove(me.METADATA.records.length - 1, suppressEvents)\r\n          } else if (this.METADATA.fifo > 0 && me.METADATA.records.length + 1 > me.METADATA.fifo) {\r\n            me.remove(0, suppressEvents)\r\n          }\r\n\r\n          // Relay model events to this store.\r\n          // record.relay('*', this, 'record.')\r\n          record.on('*', function () {\r\n            switch (this.event) {\r\n              // case 'field.update':\r\n              // case 'field.delete':\r\n              //   // TODO: Update indices\r\n              //   return\r\n\r\n              case 'field.invalid':\r\n              case 'field.valid':\r\n                return me.emit(this.event.replace('field.', 'record.'), record)\r\n\r\n              case 'expired':\r\n                // TODO: Handle expiration\r\n            }\r\n          })\r\n\r\n          delete record.METADATA.store\r\n          Object.defineProperty(record.METADATA, 'store', NGN.get(() => me))\r\n\r\n          // Indexing is handled in an internal event handler\r\n          me.METADATA.records.push(record)\r\n\r\n          // Add the record to the map for efficient retrievel by OID\r\n          me.PRIVATE.RECORDMAP.set(record.OID, me.METADATA.records.length - 1)\r\n\r\n          return record\r\n        },\r\n\r\n        convertStubToRecord: (index, record) => {\r\n          if (record.hasOwnProperty(this.PRIVATE.STUB)) {\r\n            let newRecord = this.PRIVATE.addRecord(record.metadata, false)\r\n            newRecord.OID = record.OID\r\n\r\n            this.METADATA.records[index] = newRecord\r\n\r\n            return newRecord\r\n          } else {\r\n            return record\r\n          }\r\n        }\r\n      }),\r\n\r\n      // Create a convenience alias for the remove method.\r\n      delete: NGN.const(NGN.deprecate(this.remove, 'Store.delete is deprecated. Use Store.remove instead.'))\r\n    })\r\n\r\n    // Create a smart reference to record lists\r\n    Object.defineProperties(this.PRIVATE, {\r\n      ACTIVERECORDS: NGN.get(() => {\r\n        if (this.PRIVATE.ACTIVERECORDMAP === null) {\r\n          return this.PRIVATE.RECORDMAP\r\n        }\r\n\r\n        return this.PRIVATE.ACTIVERECORDMAP\r\n      }),\r\n\r\n      FILTEREDRECORDS: NGN.get(() => {\r\n        if (this.PRIVATE.FILTEREDRECORDMAP === null) {\r\n          return this.PRIVATE.RECORDMAP\r\n        }\r\n\r\n        return this.PRIVATE.FILTEREDRECORDMAP\r\n      })\r\n    })\r\n\r\n    // Disallow modification of internal events\r\n    Object.freeze(this.PRIVATE.EVENT)\r\n\r\n    // Support LIFO (Last In First Out) & FIFO(First In First Out)\r\n    if (this.METADATA.lifo > 0 && this.METADATA.fifo > 0) {\r\n      throw new InvalidConfigurationError('NGN.DATA.Store can be configured to use FIFO or LIFO, but not both simultaneously.')\r\n    }\r\n\r\n    // If LIFO/FIFO is used, disable alternative record count limitations.\r\n    if (this.METADATA.lifo > 0 || this.METADATA.fifo > 0) {\r\n      this.METADATA.minRecords = 0\r\n      this.METADATA.maxRecords = -1\r\n    } else {\r\n      this.METADATA.minRecords = this.METADATA.minRecords < 0 ? 0 : this.METADATA.minRecords\r\n    }\r\n\r\n    // Bubble events to the BUS\r\n    // this.relay('*', NGN.BUS, 'store.')\r\n\r\n    // Configure Indices\r\n    if (NGN.coalesce(cfg.index) && NGN.typeof(this.METADATA.Model.prototype.CONFIGURATION.fields) === 'object') {\r\n      this.createIndex(cfg.index)\r\n    }\r\n\r\n    // Setup auto-compact\r\n    if (this.METADATA.autocompact < 100) {\r\n      this.METADATA.DELETECOUNT = 0\r\n      this.on(this.PRIVATE.EVENTS.DELETE_RECORD, () => {\r\n        this.METADATA.DELETECOUNT++\r\n\r\n        if (this.METADATA >= this.METADATA.autocompact) {\r\n          this.METADATA.DELETECOUNT = 0\r\n          this.compact()\r\n        }\r\n      })\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 33,
+        "column": 2
+      },
+      "end": {
+        "line": 549,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "cfg": {
+          "type": "argument",
+          "label": "cfg",
+          "description": null,
+          "code": "cfg = {}",
+          "start": {
+            "line": 33,
+            "column": 15
+          },
+          "end": {
+            "line": 33,
+            "column": 23
+          },
+          "flags": [],
+          "authors": [],
+          "default": "{}",
+          "datatype": "object",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "add": {
+      "type": "method",
+      "label": "add",
+      "description": "Append a data record to the store. This adds the record to the end of the list.",
+      "code": "add (data, suppressEvents = false) {\r\n    // Support array input\r\n    if (NGN.typeof(data) === 'array') {\r\n      let result = new Array(data.length)\r\n\r\n      for (let i = 0; i < data.length; i++) {\r\n        result[i] = this.add(data[i], suppressEvents)\r\n      }\r\n\r\n      return result\r\n    }\r\n\r\n    // Prevent creation if it will exceed maximum record count.\r\n    if (this.METADATA.maxRecords > 0 && this.METADATA.records.length + 1 > this.METADATA.maxRecords) {\r\n      throw new Error('Maximum record count exceeded.')\r\n    }\r\n\r\n    if (!(data instanceof this.METADATA.Model)) {\r\n      // Force a data model\r\n      if (NGN.typeof(data) === 'string') {\r\n        data = JSON.parse(data)\r\n      }\r\n\r\n      if (typeof data !== 'object') {\r\n        throw new Error(`${NGN.typeof(data)} is an invalid data type (must be an object conforming to the ${this.METADATA.Model.name} field configuration).`)\r\n      }\r\n    } else {\r\n      data = data.data\r\n    }\r\n\r\n    const record = this.PRIVATE.addRecord(data)\r\n\r\n    // TODO: Apply filters to new record before identifying the last record.\r\n    this.METADATA.LASTRECORDINDEX = this.METADATA.records.length - 1\r\n\r\n    this.emit(this.PRIVATE.EVENT.CREATE_RECORD, record)\r\n\r\n    if (!suppressEvents) {\r\n      this.emit('record.create', record)\r\n    }\r\n\r\n    return record\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 748,
+        "column": 2
+      },
+      "end": {
+        "line": 790,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "data": {
+          "type": "argument",
+          "label": "data",
+          "description": "Accepts an existing NGN Data Model or a JSON object.\nIf a JSON object is supplied, it will be applied to\nthe data model specified in #model.",
+          "code": "data",
+          "start": {
+            "line": 748,
+            "column": 7
+          },
+          "end": {
+            "line": 748,
+            "column": 11
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngn.data.model|object",
+          "required": true,
+          "enum": null
+        },
+        "suppressEvents": {
+          "type": "argument",
+          "label": "suppressEvents",
+          "description": "Set this to `true` to prevent the `record.create` event\nfrom firing.",
+          "code": "suppressEvents = false",
+          "start": {
+            "line": 748,
+            "column": 13
+          },
+          "end": {
+            "line": 748,
+            "column": 35
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "NGN.DATA.Model",
+      "returnDescription": "null Returns the new record.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "remove": {
+      "type": "method",
+      "label": "remove",
+      "description": "Remove a record.",
+      "code": "remove (record, suppressEvents = false) {\r\n    // Short-circuit processing if there are no records.\r\n    if (this.METADATA.records.length === 0) {\r\n      NGN.INFO(`\"${this.name}\" store called remove(), but the store contains no records.`)\r\n      return\r\n    }\r\n\r\n    // Support removal of simultaneously removing multiple records\r\n    if (NGN.typeof(record) === 'array') {\r\n      let result = new Array(record.length)\r\n\r\n      for (let i = 0; i < record.length; i++) {\r\n        result[i] = this.remove(record[i])\r\n      }\r\n\r\n      return result\r\n    }\r\n\r\n    // Prevent removal if it will exceed minimum record count.\r\n    if (this.minRecords > 0 && this.METADATA.records.length - 1 < this.minRecords) {\r\n      throw new Error('Removing this record would violate the minimum record count.')\r\n    }\r\n\r\n    // Identify which record will be removed.\r\n    let index\r\n\r\n    switch (NGN.typeof(record)) {\r\n      case 'number':\r\n        if (record < 0 || !this.METADATA.records[record]) {\r\n          NGN.ERROR(`Record removal failed (record not found at index ${(record || 'undefined').toString()}).`)\r\n          return null\r\n        }\r\n\r\n        index = record\r\n\r\n        break\r\n\r\n      // The default case comes before the symbol case specifically\r\n      // so the record can be converted to an OID value (for use with\r\n      // the RECORDMAP lookup).\r\n      default:\r\n        if (!(record instanceof NGN.DATA.Entity)) {\r\n          NGN.ERROR('Invalid record value passed to Store.remove() method.')\r\n          return null\r\n        }\r\n\r\n        record = record.OID\r\n\r\n      case 'symbol': // eslint-disable-line no-fallthrough\r\n        index = this.PRIVATE.ACTIVERECORDS.get(record)\r\n\r\n        if (index < 0) {\r\n          NGN.ERROR(`Record removal failed. Record OID not found (\"${record.toString()}\").`)\r\n          return null\r\n        }\r\n\r\n        break\r\n    }\r\n\r\n    // If nothing has been deleted yet, create an active record map.\r\n    // The active record map contains Model OID values with a reference\r\n    // to the actual record index.\r\n    if (this.PRIVATE.ACTIVERECORDMAP === null) {\r\n      // Copy the record map to initialize the active records\r\n      this.PRIVATE.ACTIVERECORDMAP = new Map(this.PRIVATE.RECORDMAP)\r\n    }\r\n\r\n    // Identify the record to be removed.\r\n    const removedRecord = this.METADATA.records[index]\r\n\r\n    // If the record isn't among the active records, do not remove it.\r\n    if (removedRecord === null) {\r\n      NGN.WARN('Specified record does not exist.')\r\n      return null\r\n    }\r\n\r\n    let activeIndex = this.PRIVATE.ACTIVERECORDS.get(removedRecord.OID)\r\n\r\n    if (isNaN(activeIndex)) {\r\n      NGN.WARN(`Record not found for \"${removedRecord.OID.toString()}\".`)\r\n      return null\r\n    }\r\n\r\n    this.PRIVATE.ACTIVERECORDS.delete(removedRecord.OID)\r\n\r\n    // If the store is configured to soft-delete,\r\n    // don't actually remove it until it expires.\r\n    if (this.METADATA.softDelete) {\r\n      if (this.METADATA.softDeleteTtl >= 0) {\r\n        removedRecord.once('expired', () => {\r\n          this.METADATA.records[this.PRIVATE.RECORDMAP.get(removedRecord.OID)] = null\r\n          this.PRIVATE.RECORDMAP.delete(removedRecord.OID)\r\n\r\n          if (!suppressEvents) {\r\n            this.emit('record.purge', removedRecord)\r\n          }\r\n        })\r\n\r\n        removedRecord.expires = this.METADATA.softDeleteTtl\r\n      }\r\n    } else {\r\n      this.METADATA.records[this.PRIVATE.RECORDMAP.get(removedRecord.OID)] = null\r\n      this.PRIVATE.RECORDMAP.delete(removedRecord.OID)\r\n    }\r\n\r\n    // Update cursor indexes (to quickly reference first and last active records)\r\n    if (this.METADATA.LASTRECORDINDEX === activeIndex) {\r\n      if (this.PRIVATE.ACTIVERECORDS.size <= 1) {\r\n        this.METADATA.LASTRECORDINDEX = this.PRIVATE.ACTIVERECORDS.values().next().value\r\n        this.METADATA.FIRSTRECORDINDEX = this.METADATA.LASTRECORDINDEX\r\n      } else if (activeIndex !== 0) {\r\n        for (let i = (activeIndex - 1); i >= 0; i--) {\r\n          if (i === 0) {\r\n            this.METADATA.LASTRECORDINDEX = 0\r\n            break\r\n          }\r\n\r\n          const examinedRecord = this.METADATA.records[i]\r\n\r\n          if (examinedRecord !== null) {\r\n            if (this.PRIVATE.ACTIVERECORDS.has(examinedRecord.OID)) {\r\n              this.METADATA.LASTRECORDINDEX = this.PRIVATE.ACTIVERECORDS.get(examinedRecord.OID)\r\n              break\r\n            }\r\n          }\r\n        }\r\n      }\r\n    } else if (this.METADATA.FIRSTRECORDINDEX === activeIndex) {\r\n      let totalSize = this.PRIVATE.ACTIVERECORDS.size\r\n\r\n      for (let i = (activeIndex + 1); i < totalSize; i++) {\r\n        const examinedRecord = this.METADATA.records[i]\r\n\r\n        if (examinedRecord !== null) {\r\n          if (this.PRIVATE.ACTIVERECORDS.has(examinedRecord.OID)) {\r\n            this.METADATA.FIRSTRECORDINDEX = this.PRIVATE.ACTIVERECORDS.get(examinedRecord.OID)\r\n            break\r\n          }\r\n        }\r\n      }\r\n    }\r\n\r\n    this.emit(this.PRIVATE.EVENT.DELETE_RECORD, removedRecord)\r\n\r\n    if (!suppressEvents) {\r\n      this.emit('record.delete', removedRecord)\r\n    }\r\n\r\n    return removedRecord\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 811,
+        "column": 2
+      },
+      "end": {
+        "line": 960,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "record": {
+          "type": "argument",
+          "label": "record",
+          "description": "Accepts an existing NGN Data Model or index number.\nUsing a model is slower than using an index number.\nThis may also be the NGN.DATA.Model#OID value (for\nadvanced use cases).",
+          "code": "record",
+          "start": {
+            "line": 811,
+            "column": 10
+          },
+          "end": {
+            "line": 811,
+            "column": 16
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngn.data.model|number|symbol",
+          "required": true,
+          "enum": null
+        },
+        "suppressEvents": {
+          "type": "argument",
+          "label": "suppressEvents",
+          "description": null,
+          "code": "suppressEvents = false",
+          "start": {
+            "line": 811,
+            "column": 18
+          },
+          "end": {
+            "line": 811,
+            "column": 40
+          },
+          "flags": [],
+          "authors": [],
+          "default": false,
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "NGN.DATA.Model",
+      "returnDescription": "null Returns the data model that was just removed. If a model\nis unavailable ,\nthis will return `null`.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "createIndex": {
+      "type": "method",
+      "label": "createIndex",
+      "description": "Create a new index on the store.\r\n  \r\n  The name of the field to index.\r\n  \r\n  Triggered when an index is created. The name of field is passed\r\n  as the only argument.",
+      "code": "createIndex (field) {\r\n    // Support multiple indexes\r\n    if (NGN.typeof(field) === 'array') {\r\n      for (let i = 0; i < field.length; i++) {\r\n        this.createIndex(field[i])\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    // Make sure index fields are known to the store\r\n    if (!this.METADATA.INDEXFIELDS) {\r\n      this.METADATA.INDEXFIELDS = new Set()\r\n\r\n      // this.on('record.*', this.PRIVATE.INDEX)\r\n      this.on([\r\n        this.PRIVATE.EVENT.CREATE_RECORD,\r\n        this.PRIVATE.EVENT.DELETE_RECORD,\r\n        this.PRIVATE.EVENT.LOAD_RECORDS,\r\n        this.PRIVATE.EVENT.DELETE_RECORD_FIELD,\r\n        'clear'\r\n      ], this.PRIVATE.INDEX)\r\n    }\r\n\r\n    // In an index already exists, ignore it.\r\n    if (this.METADATA.INDEXFIELDS.has(field)) {\r\n      return\r\n    }\r\n\r\n    // Guarantee the existance of the index list\r\n    this.METADATA.INDEX = NGN.coalesce(this.METADATA.INDEX, {})\r\n\r\n    this.PRIVATE.checkModelIndexField(field)\r\n\r\n    this.METADATA.INDEXFIELDS.add(field)\r\n\r\n    // Identify BTree\r\n    let btree = ['number', 'date'].indexOf(this.PRIVATE.getModelFieldType(field)) >= 0\r\n\r\n    this.METADATA.INDEX[field] = new NGN.DATA.Index(btree, `${field.toUpperCase()} ${btree ? 'BTREE ' : ''}INDEX`)\r\n\r\n    // Apply to any existing records\r\n    if (this.METADATA.records.length > 0) {\r\n      this.PRIVATE.INDEX.apply({ event: this.PRIVATE.EVENT.LOAD_RECORDS })\r\n    }\r\n\r\n    this.emit('index.created', field)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 970,
+        "column": 2
+      },
+      "end": {
+        "line": 1017,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "field": {
+          "type": "argument",
+          "label": "field",
+          "description": "The name of the field to index.",
+          "code": "field",
+          "start": {
+            "line": 970,
+            "column": 15
+          },
+          "end": {
+            "line": 970,
+            "column": 20
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "removeIndex": {
+      "type": "method",
+      "label": "removeIndex",
+      "description": "Remove an existing index from the store.\r\n  \r\n  The name of the indexed field. Set this to `null` (or leave blank) to\r\n  remove all existing indexes.\r\n  \r\n  Triggered when an index is removed. The name of field is passed\r\n  as the only argument.",
+      "code": "removeIndex (field = null) {\r\n    if (!this.METADATA.INDEXFIELDS) {\r\n      return\r\n    }\r\n\r\n    if (NGN.coalesce(field) === null) {\r\n      field = this.indexedFieldNames\r\n    }\r\n\r\n    // Support multiple indexes\r\n    if (NGN.typeof(field) === 'array') {\r\n      for (let i = 0; i < field.length; i++) {\r\n        this.removeIndex(field[i])\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    // Remove the specific index.\r\n    this.METADATA.INDEXFIELDS.delete(field)\r\n    delete this.METADATA.INDEX[field]\r\n    this.emit('index.delete', field)\r\n\r\n    // When there are no more indexes, clear out event\r\n    // listeners and fields.\r\n    if (this.METADATA.INDEXFIELDS.size === 0) {\r\n      this.METADATA.INDEX = null\r\n      delete this.METADATA.INDEXFIELDS\r\n\r\n      this.off([\r\n        this.PRIVATE.EVENT.CREATE_RECORD,\r\n        this.PRIVATE.EVENT.DELETE_RECORD,\r\n        this.PRIVATE.EVENT.LOAD_RECORDS,\r\n        this.PRIVATE.EVENT.DELETE_RECORD_FIELD\r\n      ], this.PRIVATE.INDEX)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1028,
+        "column": 2
+      },
+      "end": {
+        "line": 1064,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "field": {
+          "type": "argument",
+          "label": "field",
+          "description": "The name of the indexed field. Set this to `null`  to\nremove all existing indexes.",
+          "code": "field = null",
+          "start": {
+            "line": 1028,
+            "column": 15
+          },
+          "end": {
+            "line": 1028,
+            "column": 27
+          },
+          "flags": [],
+          "authors": [],
+          "default": "null",
+          "datatype": "string",
+          "required": false,
+          "enum": [
+            "or leave blank"
+          ]
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getRecordSibling": {
+      "type": "method",
+      "label": "getRecordSibling",
+      "description": "Retrieve a record based on it's relative position to another\r\n  record. This method is used by NGN.DATA.Model#next and NGN.DATA.Model#previous\r\n  to support \"doubly linked list\" approach to record iteration.",
+      "code": "getRecordSibling (currentRecord, count = 1, cycle = false) {\r\n    let size = this.size\r\n\r\n    if (size === 0) {\r\n      NGN.WARN('Attempted to execute getRecordSibling with no active records.')\r\n      return null\r\n    }\r\n\r\n    // Make sure the iterator fits within the range\r\n    if (Math.abs(count) > size) {\r\n      count = count % size\r\n    }\r\n\r\n    if (size === 1 || count === 0) {\r\n      return currentRecord\r\n    }\r\n\r\n    let ActiveRecords = Array.from(this.PRIVATE.ACTIVERECORDS)\r\n    let currentIndex = ActiveRecords.findIndex(item => currentRecord.OID === item[0])\r\n\r\n    if (currentIndex < 0) {\r\n      throw new Error('Record not found.')\r\n    }\r\n\r\n    currentIndex += count\r\n\r\n    // Support cycling through records.\r\n    if ((currentIndex >= ActiveRecords.length || currentIndex < 0) && cycle) {\r\n      // Cycle forwards\r\n      if (count > 0) {\r\n        currentIndex = currentIndex % ActiveRecords.length\r\n      } else {\r\n        // Cycle Backwards\r\n        currentIndex = ActiveRecords.length - Math.abs(currentIndex)\r\n      }\r\n    }\r\n\r\n    if (currentIndex < 0 || currentIndex >= ActiveRecords.length) {\r\n      return null\r\n    }\r\n\r\n    return this.METADATA.records[ActiveRecords[currentIndex][1]]\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1075,
+        "column": 2
+      },
+      "end": {
+        "line": 1117,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "currentRecord": {
+          "type": "argument",
+          "label": "currentRecord",
+          "description": "[description]",
+          "code": "currentRecord",
+          "start": {
+            "line": 1075,
+            "column": 20
+          },
+          "end": {
+            "line": 1075,
+            "column": 33
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "[type]",
+          "required": true,
+          "enum": null
+        },
+        "count": {
+          "type": "argument",
+          "label": "count",
+          "description": "[description]",
+          "code": "count = 1",
+          "start": {
+            "line": 1075,
+            "column": 35
+          },
+          "end": {
+            "line": 1075,
+            "column": 44
+          },
+          "flags": [],
+          "authors": [],
+          "default": "1",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        },
+        "cycle": {
+          "type": "argument",
+          "label": "cycle",
+          "description": "[description]",
+          "code": "cycle = false",
+          "start": {
+            "line": 1075,
+            "column": 46
+          },
+          "end": {
+            "line": 1075,
+            "column": 59
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "[type]",
+      "returnDescription": "description",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "indexOf": {
+      "type": "method",
+      "label": "indexOf",
+      "description": "Returns the index number of the model. If the same\r\n  model exists more than once (duplicate records), only\r\n  the first index is returned.\r\n  \r\n  The model/record to retrieve an index number for.\r\n  \r\n  The zero-based index number of the model.",
+      "code": "indexOf (record) {\r\n    return this.PRIVATE.RECORDMAP.get(record.OID)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1128,
+        "column": 2
+      },
+      "end": {
+        "line": 1130,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "record": {
+          "type": "argument",
+          "label": "model",
+          "description": "The model/record to retrieve an index number for.",
+          "code": "record",
+          "start": {
+            "line": 1128,
+            "column": 11
+          },
+          "end": {
+            "line": 1128,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngn.data.model",
+          "required": true,
+          "enum": null
+        },
+        "model": {
+          "type": "argument",
+          "label": "model",
+          "description": "The model/record to retrieve an index number for.",
+          "code": "record",
+          "start": {
+            "line": 1128,
+            "column": 11
+          },
+          "end": {
+            "line": 1128,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngn.data.model",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "number",
+      "returnDescription": "null The zero-based index number of the model.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "contains": {
+      "type": "method",
+      "label": "contains",
+      "description": "Determine whether the store contains a record.\r\n  This only checks the active record set (ignores filtered records).\r\n  \r\n  The record to test for inclusion.",
+      "code": "contains (record) {\r\n    return this.PRIVATE.ACTIVERECORDS.has(record.OID)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1139,
+        "column": 2
+      },
+      "end": {
+        "line": 1141,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "record": {
+          "type": "argument",
+          "label": "record",
+          "description": "The record to test for inclusion.",
+          "code": "record",
+          "start": {
+            "line": 1139,
+            "column": 12
+          },
+          "end": {
+            "line": 1139,
+            "column": 18
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngn.data.model",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "boolean",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getIndexRecords": {
+      "type": "method",
+      "label": "getIndexRecords",
+      "description": "Get the list of records for the given value.\r\n  \r\n  The name of the indexed field.\r\n  \r\n  The value of the index field. This is used to lookup\r\n  the list of records/models whose field is equal to\r\n  the specified value.\r\n  \r\n  Returns an array of models/records within the index for\r\n  the given value.",
+      "code": "getIndexRecords (field, value) {\r\n    if (this.METADATA.INDEX && this.METADATA.INDEX.hasOwnProperty(field)) {\r\n      let oid = this.METADATA.INDEX[field].recordsFor(value)\r\n      let result = new Array(oid.length)\r\n\r\n      for (let i = 0; i < oid.length; i++) {\r\n        result[i] = this.METADATA.records[this.PRIVATE.RECORDMAP.get(oid[i])]\r\n      }\r\n\r\n      return result\r\n    }\r\n\r\n    return []\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1155,
+        "column": 2
+      },
+      "end": {
+        "line": 1168,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "field": {
+          "type": "argument",
+          "label": "fieldName",
+          "description": "The name of the indexed field.",
+          "code": "field",
+          "start": {
+            "line": 1155,
+            "column": 19
+          },
+          "end": {
+            "line": 1155,
+            "column": 24
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "value": {
+          "type": "argument",
+          "label": "fieldValue",
+          "description": "The value of the index field. This is used to lookup\nthe list of records/models whose field is equal to\nthe specified value.",
+          "code": "value",
+          "start": {
+            "line": 1155,
+            "column": 26
+          },
+          "end": {
+            "line": 1155,
+            "column": 31
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "fieldName": {
+          "type": "argument",
+          "label": "fieldName",
+          "description": "The name of the indexed field.",
+          "code": "field",
+          "start": {
+            "line": 1155,
+            "column": 19
+          },
+          "end": {
+            "line": 1155,
+            "column": 24
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "fieldValue": {
+          "type": "argument",
+          "label": "fieldValue",
+          "description": "The value of the index field. This is used to lookup\nthe list of records/models whose field is equal to\nthe specified value.",
+          "code": "value",
+          "start": {
+            "line": 1155,
+            "column": 26
+          },
+          "end": {
+            "line": 1155,
+            "column": 31
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "NGN.DATA.Model[]",
+      "returnDescription": "null Returns an array of models/records within the index for\nthe given value.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getRecord": {
+      "type": "method",
+      "label": "getRecord",
+      "description": "Retrieve an active record by index number (0-based, similar to an array).\r\n  \r\n  The index of the record to retrieve.",
+      "code": "getRecord (index = 0) {\r\n    if (typeof index === 'symbol') {\r\n      index = this.PRIVATE.ACTIVERECORDS.get(index)\r\n    }\r\n\r\n    if (index < 0) {\r\n      NGN.WARN('Cannot retrieve a record for a negative index.')\r\n      return null\r\n    }\r\n\r\n    if (index >= this.PRIVATE.ACTIVERECORDS.size) {\r\n      NGN.WARN('Cannot retrieve a record for an out-of-scope index (index greater than total record count.)')\r\n      return null\r\n    }\r\n\r\n    return this.METADATA.records[Array.from(this.PRIVATE.ACTIVERECORDS)[index][1]]\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1175,
+        "column": 2
+      },
+      "end": {
+        "line": 1191,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "index": {
+          "type": "argument",
+          "label": "index",
+          "description": "The index of the record to retrieve.",
+          "code": "index = 0",
+          "start": {
+            "line": 1175,
+            "column": 13
+          },
+          "end": {
+            "line": 1175,
+            "column": 22
+          },
+          "flags": [],
+          "authors": [],
+          "default": "0",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "clear": {
+      "type": "method",
+      "label": "clear",
+      "description": "Removes all data. If auditing is enabled, the transaction log is reset.",
+      "code": "clear (purge = true, suppressEvents = false) {\r\n    if (this.METADATA.ARCHIVE) {\r\n      if (!purge) {\r\n        this.METADATA.ARCHIVE = this.records\r\n      } else {\r\n        delete this.METADATA.ARCHIVE\r\n      }\r\n    }\r\n\r\n    this.METADATA.records = []\r\n    this.PRIVATE.RECORDMAP = new Map()\r\n    this.PRIVATE.ACTIVERECORDMAP = null\r\n    this.PRIVATE.FILTEREDRECORDMAP = null\r\n    this.METADATA.LASTRECORDINDEX = 0\r\n    this.METADATA.FIRSTRECORDINDEX = 0\r\n\r\n    if (this.METADATA.AUDITABLE) {\r\n      this.METADATA.AUDITLOG.reset()\r\n    }\r\n\r\n    // Indexes updated automatically (listening for 'clear' event)\r\n\r\n    if (!suppressEvents) {\r\n      this.emit('clear')\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1203,
+        "column": 2
+      },
+      "end": {
+        "line": 1228,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "purge": {
+          "type": "argument",
+          "label": "purgeSoftDelete",
+          "description": "Purge soft deleted records from memory.",
+          "code": "purge = true",
+          "start": {
+            "line": 1203,
+            "column": 9
+          },
+          "end": {
+            "line": 1203,
+            "column": 21
+          },
+          "flags": [],
+          "authors": [],
+          "default": "true",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "suppressEvents": {
+          "type": "argument",
+          "label": "suppressEvents",
+          "description": "Set to `true` to prevent events from triggering when this method is run.",
+          "code": "suppressEvents = false",
+          "start": {
+            "line": 1203,
+            "column": 23
+          },
+          "end": {
+            "line": 1203,
+            "column": 45
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "purgeSoftDelete": {
+          "type": "argument",
+          "label": "purgeSoftDelete",
+          "description": "Purge soft deleted records from memory.",
+          "code": "purge = true",
+          "start": {
+            "line": 1203,
+            "column": 9
+          },
+          "end": {
+            "line": 1203,
+            "column": 21
+          },
+          "flags": [],
+          "authors": [],
+          "default": "true",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "clearEvents": {
+      "type": "method",
+      "label": "clearEvents",
+      "description": "A special method to clear events from the underlying event emitter.\r\n  This exists because #clear has a special meaning in a data store (removing\r\n  all data records vs removing all events).",
+      "code": "clearEvents () {\r\n    super.clear(...arguments)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1236,
+        "column": 2
+      },
+      "end": {
+        "line": 1238,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "replaceModel": {
+      "type": "method",
+      "label": "replaceModel",
+      "description": "Replace a model.\r\n  \r\n  \r\n  The new model.",
+      "code": "replaceModel (newModel) {\r\n    NGN.deprecate(\r\n      () => { this.model = newModel },\r\n      'replaceModel has been deprected. Set the model directly instead.'\r\n    )\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1246,
+        "column": 2
+      },
+      "end": {
+        "line": 1251,
+        "column": 3
+      },
+      "flags": [
+        "2.0.0"
+      ],
+      "authors": [],
+      "arguments": {
+        "newModel": {
+          "type": "argument",
+          "label": "newModel",
+          "description": "The new model.",
+          "code": "newModel",
+          "start": {
+            "line": 1246,
+            "column": 16
+          },
+          "end": {
+            "line": 1246,
+            "column": 24
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngn.data.model",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "snapshot": {
+      "type": "method",
+      "label": "snapshot",
+      "description": "Add a snapshot of the current store to the #snapshot archive.\nThis can potentially be a computationally/memory-expensive operation.\nThe method creates a copy of all data in the store along with checksums\nof each element and holds the snapshot in RAM. Large stores may consume\nlarge amounts of RAM until the snapshots are released/cleared.\nSnapshots are most commonly used with data proxies to calculate\ndifferences in a data set before persisting them to a database.",
+      "code": "snapshot () {\r\n    this.METADATA.snapshotarchive = NGN.coalesce(this.METADATA.snapshotarchive, [])\r\n\r\n    let data = this.data\r\n    let dataset = {\r\n      id: NGN.DATA.UTILITY.GUID(),\r\n      timestamp: (new Date()).toISOString(),\r\n      checksum: NGN.DATA.UTILITY.checksum(JSON.stringify(data)).toString(),\r\n      modelChecksums: this.data.map((item) => {\r\n        return NGN.DATA.UTILITY.checksum(JSON.stringify(item)).toString()\r\n      }),\r\n      data: data\r\n    }\r\n\r\n    this.METADATA.snapshotarchive.unshift(dataset)\r\n    this.emit('snapshot', dataset)\r\n\r\n    return dataset\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1280,
+        "column": 2
+      },
+      "end": {
+        "line": 1298,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "object",
+      "returnDescription": "null Returns an object containing the following fields:\n\n```js\n{\ntimestamp: 'ex: 2018-01-19T16:43:03.279Z',\nchecksum: 'snapshotchecksum',\nmodelChecksums: [\n'record1_checksum',\n'record2_checksum'\n],\ndata: { ... } // Actual data at the time of the snapshot\n}\n```",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "clearSnapshots": {
+      "type": "method",
+      "label": "clearSnapshots",
+      "description": "Remove all archived snapshots.",
+      "code": "clearSnapshots () {\r\n    this.snapshotarchive = null\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1304,
+        "column": 2
+      },
+      "end": {
+        "line": 1306,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "load": {
+      "type": "method",
+      "label": "load",
+      "description": null,
+      "code": "load (data) {\r\n    console.time('load')\r\n    let insertableData\r\n\r\n    // Guarantee unique records amongst only the new records\r\n    if (!this.METADATA.allowDuplicates) {\r\n      let uniqueValues = new Set()\r\n\r\n      insertableData = []\r\n\r\n      for (let i = 0; i < data.length; i++) {\r\n        if (!uniqueValues.has(JSON.stringify(data[i]))) {\r\n          uniqueValues.add(JSON.stringify(data[i]))\r\n          insertableData.push(data[i])\r\n        } else if (this.METADATA.errorOnDuplicate) {\r\n          throw new NGNDuplicateRecordError()\r\n        }\r\n      }\r\n    } else {\r\n      insertableData = data\r\n    }\r\n\r\n    let newRecordCount = insertableData.length + this.METADATA.records.length\r\n\r\n    // Don't exceed the maximum record count if it exists.\r\n    if (this.METADATA.maxRecords > 0 && newRecordCount > this.METADATA.maxRecords) {\r\n      throw new Error('Maximum record count exceeded.')\r\n    }\r\n\r\n    if (newRecordCount > 4000000) {\r\n      throw new Error('Maximum load size exceeded. A store may contain a maximum of 4M records.')\r\n    }\r\n\r\n    for (let i = 0; i < insertableData.length; i++) {\r\n      let oid = Symbol('model.id')\r\n      this.METADATA.records.push({\r\n        [this.PRIVATE.STUB]: true,\r\n        OID: oid,\r\n        metadata: insertableData[i]\r\n      })\r\n\r\n      // Add the record to the map for efficient retrievel by OID\r\n      this.PRIVATE.RECORDMAP.set(oid, this.METADATA.records.length - 1)\r\n    }\r\n\r\n    // TODO: Apply filters to new record before identifying the last record.\r\n    this.METADATA.LASTRECORDINDEX = this.METADATA.records.length - 1\r\n\r\n    // this.emit(this.PRIVATE.EVENT.LOAD_RECORDS)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1308,
+        "column": 2
+      },
+      "end": {
+        "line": 1357,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "data": {
+          "type": "argument",
+          "label": "data",
+          "description": null,
+          "code": "data",
+          "start": {
+            "line": 1308,
+            "column": 8
+          },
+          "end": {
+            "line": 1308,
+            "column": 12
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "compact": {
+      "type": "method",
+      "label": "compact",
+      "description": "This rebuilds the local index of records, removing any dead records.\r\n  While deleted records are destroyed (in accordance to #softDeleteTtl),\r\n  the active record table contains a `null` or `undefined` value for each\r\n  deleted/dead record. This method removes such records, akin in nature to\r\n  the common JavaScript garbage collection process.\r\n  \n  This method almost never needs to be run, since stores\r\n  attempt to manage this process for themselves automatically. However; if\r\n  large volume deletions occur rapidly (50K+), it's possible (though not assured)\r\n  performance could be negatively impacted. Compacting the store can\r\n  improve performance in these cases. However; running this too often or\r\n  excessively may degrade performance since it is essentially rewriting\r\n  the store data each time.\r\n  \n  When in doubt,don'tuse this method.\r\n  \r\n  existed in the store, due to the inefficient nature at such low volume.\r\n  \r\n  Triggered when the compact process begins.\r\n  \r\n  Triggered when the compact process completes.",
+      "code": "compact () {\r\n    this.emit('compact.start')\r\n\r\n    if (this.METADATA.records.length < 100) {\r\n      this.emit('compact.complete')\r\n\r\n      if (this.METADATA.records.length !== 0) {\r\n        NGN.WARN(`compact() called on ${this.name} with fewer than 100 elements.`)\r\n      }\r\n\r\n      return\r\n    }\r\n\r\n    let ranges = []\r\n    let currentRange = []\r\n    let empty = 0\r\n\r\n    // Identify null ranges (dead records)\r\n    for (let i = 0; i < this.METADATA.records.length; i++) {\r\n      if (this.METADATA.records[i] === null) {\r\n        empty++\r\n\r\n        if (currentRange.length === 0) {\r\n          currentRange.push(i)\r\n        }\r\n      } else {\r\n        // Identify new index values for remaining records\r\n        if (empty > 0) {\r\n          this.PRIVATE.RECORDMAP.set(this.METADATA.records[i].OID, i - empty)\r\n\r\n          if (this.METADATA.FIRSTRECORDINDEX === i) {\r\n            this.METADATA.FIRSTRECORDINDEX = i - empty\r\n          }\r\n\r\n          if (this.METADATA.LASTRECORDINDEX === i) {\r\n            this.METADATA.LASTRECORDINDEX = i - empty\r\n          }\r\n        }\r\n\r\n        if (currentRange.length === 1) {\r\n          currentRange.push(i - 1)\r\n          ranges.push(currentRange)\r\n          currentRange = []\r\n        }\r\n      }\r\n    }\r\n\r\n    // Clear null ranges\r\n    empty = 0\r\n    while (ranges.length > 0) {\r\n      this.METADATA.records.splice(ranges[0][0] - empty, ranges[0][1] - ranges[0][0] + 1)\r\n      empty += ranges[0][1] - ranges[0][0] + 1\r\n      ranges.shift()\r\n    }\r\n\r\n    // Reset the active record map\r\n    this.PRIVATE.ACTIVERECORDMAP = null\r\n\r\n    this.emit('compact.complete')\r\n  }",
+      "tags": {
+        "info": [
+          "This method will not run when fewer than 100 cumulative records have\nexisted in the store, due to the inefficient nature at such low volume."
+        ]
+      },
+      "exceptions": {},
+      "start": {
+        "line": 1382,
+        "column": 2
+      },
+      "end": {
+        "line": 1441,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "forEach": {
+      "type": "method",
+      "label": "forEach",
+      "description": "Performs executes the callback method on each active record\r\n  within the store. For example:\r\n  \n  ```js\r\n  Store.forEach(function (record) {\r\n    // Do Something\r\n  })\r\n  ```\r\n  \r\n  The callback method is applied to each record.",
+      "code": "forEach (fn) {\r\n    if (!NGN.isFn(fn)) {\r\n      throw new Error(`A ${NGN.typeof(fn)} was applied to ${this.name}'s each() method when a function was expected.`)\r\n    }\r\n\r\n    this.PRIVATE.ACTIVERECORDS.forEach((value, key, map) => {\r\n      fn(this.METADATA.records[value])\r\n    })\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 1455,
+        "column": 2
+      },
+      "end": {
+        "line": 1463,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "The callback method is applied to each record.",
+          "code": "@param  {Function} callback\nThe callback method is applied to each record.",
+          "start": {
+            "line": 1455,
+            "column": 2
+          },
+          "end": {
+            "line": 1463,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {},
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

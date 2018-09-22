@@ -1,0 +1,1193 @@
+{
+  "type": "namespace",
+  "label": "NGN",
+  "description": "Returns the primitive object/function of the specified type.\r\n  For example:\r\n  \n  ```js\r\n  let type = NGN.getType('number') // Returns Number\r\n  let type = NGN.getType('string') // Returns String\r\n  ```",
+  "code": null,
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 0,
+    "column": 0
+  },
+  "end": {
+    "line": 0,
+    "column": 0
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "core.js",
+  "properties": {},
+  "methods": {
+    "define": {
+      "type": "method",
+      "label": "define",
+      "description": "Create an object definition for a property.\nFor example:\n\n```\nObject.defineProperty\n\n// The snippet above is the same as:\nObject.defineProperty(this, 'attr', {\nenumberable: true,\nwritable: false,\nconfigurable: true,\nvalue: 'value'\n})\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "public": {
+      "type": "method",
+      "label": "public",
+      "description": "Create a `public` property definition for an object.\nExample:\n\n```\nObject.defineProperty\n\n// Longhand equivalent\nObject.defineProperty(this, 'attr', {\nenumerable: true,\nwritable: true,\nconfigurable: false,\nvalue: 'somevalue'\n})\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "private": {
+      "type": "method",
+      "label": "private",
+      "description": "Create a `private` property definition for an object.\nExample:\n\n```\nObject.defineProperty\n\n// Longhand equivalent\nObject.defineProperty(this, 'attr', {\nenumerable: false,\nwritable: true,\nconfigurable: false,\nvalue: 'somevalue'\n})\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "const": {
+      "type": "method",
+      "label": "const",
+      "description": "Create a `public` constant property definition for an object.\nExample:\n\n```\nObject.defineProperty\n\n// Longhand equivalent\nObject.defineProperty(this, 'attr', {\nenumerable: true,\nwritable: false,\nconfigurable: false,\nvalue: 'somevalue'\n})\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "privateconst": {
+      "type": "method",
+      "label": "privateconst",
+      "description": "Create a `private` constant property definition for an object.\nExample:\n\n```\nObject.defineProperty\n\n// Longhand equivalent\nObject.defineProperty(this, 'attr', {\nenumerable: false,\nwritable: false,\nconfigurable: false,\nvalue: 'somevalue'\n})\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "get": {
+      "type": "method",
+      "label": "get",
+      "description": "Create a private `getter` property definition for an object.\nPublic getters are part of the ES2015 class spec.\n\nExample:\n\n```\nlet myFunction = function  {\nreturn 'somevalue'\n}\n\n// Longhand equivalent\nObject.defineProperty(this, 'attr', {\nenumerable: false,\nget: function () {\nreturn 'somevalue'\n}\n})\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "set": {
+      "type": "method",
+      "label": "set",
+      "description": "Create a private `setter` property definition for an object.\nPublic setters are part of the ES2015 class spec.\n\nExample:\n\n```\nlet myFunction = function  {\nreturn 'somevalue'\n}\n\n// Longhand equivalent\nObject.defineProperty(this, 'attr', {\nenumerable: false,\nset: function (value) {\nsomethingElse = value\n}\n})\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getset": {
+      "type": "method",
+      "label": "getset",
+      "description": "Create a private property defintion containing both a `getter` and `setter`\nfor the specified attribute.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "extend": {
+      "type": "method",
+      "label": "extend",
+      "description": "Extend the NGN core object. Extending NGN is the equivalent of:\n\nExample:\n```\nNGN.extend {\nreturn 'Hello, ' + recipient + '!'\n}))\n\n// Equivalent of:\n\nObject.defineProperty(NGN, 'greet', {\nenumerable: true,\nwritable: false,\nconfigurable: false,\nvalue: function (recipient) {\nreturn 'Hello, ' + recipient + '!'\n}\n})\n```\nThe example above produces a public function available from NGN:\n\n```\nconsole.log(NGN.greet('world')) // outputs Hello, world!",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "inherit": {
+      "type": "method",
+      "label": "inherit",
+      "description": "Inherit the properties of another object/class.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "slice": {
+      "type": "method",
+      "label": "slice",
+      "description": "Converts an array-like object to an array.\n\nExample:\n```\nfunction  {\nreturn NGN.slice(arguments)\n}\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "splice": {
+      "type": "method",
+      "label": "splice",
+      "description": "Converts an array-like object to a spliced array.\n\nExample:\n```\nfunction  {\nreturn NGN.splice(arguments)\n}\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "nullIf": {
+      "type": "method",
+      "label": "nullIf",
+      "description": "Returns a null value if the two specified expressions are equal.\n```js\nif  {\nconsole.log('Variable had a value of \"value\", which is considered null')\n}\n\n// or\n\nif (NGN.nullIf(myvar) === null) {\nconsole.log('Empty variable whose trimmed length is 0')\n}\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "converge": {
+      "type": "method",
+      "label": "converge",
+      "description": "Provides a basic coalesce. Expects the first parameter to be a boolean\nvalue. `true` will wrap arguments in a nullIf operator. `false` will not.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "coalesce": {
+      "type": "method",
+      "label": "coalesce",
+      "description": "Finds the first non-null/defined value in a list of arguments.\nThis can be used with {@link Boolean Boolean} values, since `true`/`false` is a\nnon-null/defined value.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "coalesceb": {
+      "type": "method",
+      "label": "coalesceb",
+      "description": "Provides the same functionality as #coalesce, except **b**lank/empty arguments\nare treated as `null` values.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "dedupe": {
+      "type": "method",
+      "label": "dedupe",
+      "description": "Deduplicate a simple array.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "typeof": {
+      "type": "method",
+      "label": "typeof",
+      "description": "A more specific typeof method.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "forceArray": {
+      "type": "method",
+      "label": "forceArray",
+      "description": "Forces a value to become an array if it is not already one. For example:\n\n```js\nlet x = 'value'\n\nx = NGN.forceArray\n\nconsole.log(x) // Outputs ['value']\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "forceBoolean": {
+      "type": "method",
+      "label": "forceBoolean",
+      "description": "Forces a value to become a boolean if it is not already one. For example:\n\n```js\nlet x = NGN.forceBoolean // String ==> Boolean\nconsole.log(x) // Outputs false\n\nlet y = NGN.forceBoolean('text') // String ==> Boolean\nconsole.log(y) // Outputs true (any non-blank text results in true, except the word \"false\")\n\nlet z = NGN.forceBoolean(0) // Number ==> Boolean (0 = false, 1 = true)\nconsole.log(z) // Outputs false\n```\n\nAll other types will yield a `true` value, except for `null`. A `null`\nvalue is treated as `false`.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "forceNumber": {
+      "type": "method",
+      "label": "forceNumber",
+      "description": "Forces a value to become a number if it is not already one. For example:\n\n```js\nlet x = NGN.forceNumber // String ==> Number\nconsole.log(x === 10) // Outputs true\n\nlet y = NGN.forceNumber(true) // Boolean ==> Number\nconsole.log(y) // Output 1\n\nlet z = NGN.forceNumber(false) // Boolean ==> Number\nconsole.log(y) // Output 0\n```\n\nAll other types will yield a `NaN` value. This has no effect on",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "stack": {
+      "type": "method",
+      "label": "stack",
+      "description": "Retrieve the stack trace from a specific code location without throwing\nan exception. Files are always listed from the root. This is the default\norder in browsers, but the reverse of the normal stack order in node-like\nenvironments.\n\nFor example, the following stack on node shows `_test.js` as the last item\nin the array. In node-like environments, the `_test.js` would normally be\nthe first item in the stacktrace.\n\n```js\n[\n{ path: 'node.js:348:7', file: 'node.js', line: 348, column: 7 },\n{ path: 'module.js:575:10',\nfile: 'module.js',\nline: 575,\ncolumn: 10 },\n{ path: 'module.js:550:10',\nfile: 'module.js',\nline: 550,\ncolumn: 10 },\n{ path: 'module.js:541:32',\nfile: 'module.js',\nline: 541,\ncolumn: 32 },\n{ path: '/_test.js:8:14', file: '/_test.js', line: 8, column: 14 }\n]\n```\n\nBy standardizing the order of the stack trace, it is easier to programmatically\nidentify sources of problems. This method does not prevent developers from\naccessing a normal stacktrace.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "isFn": {
+      "type": "method",
+      "label": "isFn",
+      "description": "A shortcut method for determining if a variable is a function.\nThis is useful for identifying the existance of callback methods.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "wrap": {
+      "type": "method",
+      "label": "wrap",
+      "description": "Executes a **synchronous** method before invoking a standard function.\nThis is primarily designed for displaying warnings, but can also be\nused for other operations like migration layers.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "wrapClass": {
+      "type": "method",
+      "label": "wrapClass",
+      "description": "Executes a **synchronous** method before returning an instantiated class.\nIt runs a function first, then returns the equivalent of\n`new MyClass`. This is primarily designed for displaying warnings,\nbut can also be used for other operations like migration layers.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "deprecate": {
+      "type": "method",
+      "label": "deprecate",
+      "description": "Fires an event  or logs a warning indicating the\nmethod is deprecated.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "deprecateClass": {
+      "type": "method",
+      "label": "deprecateClass",
+      "description": "Logs a warning indicating the class is deprecated. This differs from\n#deprecate by extending & preserving the original class (the resulting\nclass can be used with the `new` operator).",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "needs": {
+      "type": "method",
+      "label": "needs",
+      "description": "A method to check for the existance of required attributes in an object.\nThis is designed to check for namespace existance.\n\n```js\nNGN.needs // Throws an error because \"JUNK\" doesn't exist.\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getObjectMissingPropertyNames": {
+      "type": "method",
+      "label": "getObjectMissingPropertyNames",
+      "description": "Given a list, returns which list items are not present in an\nobject's enumerable properties.\n\n```js\nlet obj = { a: 1, b: 2 }\nlet missing = NGN.getObjectMissingPropertyNames\n\nconsole.log(missing) // Outputs ['c']\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getObjectExtraneousPropertyNames": {
+      "type": "method",
+      "label": "getObjectExtraneousPropertyNames",
+      "description": "Given a list, returns which enumerable object properties\nare not in the list.\n\n```js\nlet obj = { a: 1, b: 2, d: 4 }\nlet extra = NGN.getObjectExtraneousPropertyNames\n\nconsole.log(extra) // Outputs ['d']\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "objectHasAll": {
+      "type": "method",
+      "label": "objectHasAll",
+      "description": "Determines whether the specified object has _all_ of the provided properties.\nThis only accounts for enumerable properties. It also decorates the Boolean\nresult with a property called `properties`, which contains any missing property\nnames.\n\n**Example**\n```js\nlet check = NGN.objectHasAll\n\nconsole.log(check) // Outputs: true\n```\n\n```js\nlet check = NGN.objectHasAll(NGN, 'BUS', 'NET', 'JUNK')\n\nconsole.log(check) // Outputs: false\nconsole.log(check.properties) // Outputs ['JUNK']\n```js",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "objectHasAny": {
+      "type": "method",
+      "label": "objectHasAny",
+      "description": "Determines whether the specified object has _any_ of the requested properties.\nThis only accounts for enumerable properties.\n\n**Example**\n```js\nlet check = NGN.objectHasAny\n\nconsole.log(check) // Outputs: true\n```\n\n```js\nlet check = NGN.objectHasAny(NGN, 'JUNK1', 'JUNK2', 'JUNK3')\n\nconsole.log(check) // Outputs: false\n```js",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "objectHasExactly": {
+      "type": "method",
+      "label": "objectHasExactly",
+      "description": "Determines whether the specified object has _only_ the requested properties.\nThis only accounts for enumerable properties.\n\n**Example**\n```js\nlet obj = { a: 1, b: 2 }\nlet check = NGN.objectHasExactly\n\nconsole.log(check) // Outputs: true\n```\n\n```js\nlet obj = { a: 1, b: 2, d: 4 }\nlet check = NGN.objectHasExactly(obj, 'a', 'b', 'c')\n\nconsole.log(check) // Outputs: false\n```js",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "objectRequires": {
+      "type": "method",
+      "label": "objectRequires",
+      "description": "This is the same as #objectHasAll, but will throw an\nerror if the object is missing any properties.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "createAlias": {
+      "type": "method",
+      "label": "createAlias",
+      "description": "A helper method to alias a value on an object. This is the equivalent of:\n```js\nObject.defineProperty => {\nreturn value\n}))\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "WARN": {
+      "type": "method",
+      "label": "WARN",
+      "description": "This method is used to emit special info events.\nThe NGN.BUS can listen for all events using the NGN.WARN global symbol.\n\n```js\nNGN.BUS.on => {\nconsole.warn(...arguments)\n})\n```\n\nSee NGN.EventEmitter#emit for detailed parameter usage.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "INFO": {
+      "type": "method",
+      "label": "INFO",
+      "description": "This method is used to emit special warning events.\nThe NGN.BUS can listen for all events using the NGN.INFO global symbol.\n\n```js\nNGN.BUS.on => {\nconsole.info(...arguments)\n})\n```\n\nSee NGN.EventEmitter#emit for detailed parameter usage.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "ERROR": {
+      "type": "method",
+      "label": "ERROR",
+      "description": "This method is used to emit special soft error events. A soft error\nis one that does not throw, but does get logged .\nThe NGN.BUS can listen for all events using the NGN.ERROR global symbol.\n\n```js\nNGN.BUS.on(NGN.ERROR_EVENT, function () => {\nconsole.info(...arguments)\n})\n```\n\nSee NGN.EventEmitter#emit for detailed parameter usage.",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "createException": {
+      "type": "method",
+      "label": "createException",
+      "description": "Create a custom global exception .",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getType": {
+      "type": "method",
+      "label": "getType",
+      "description": "Returns the primitive object/function of the specified type.\nFor example:\n\n```js\nlet type = NGN.getType // Returns Number\nlet type = NGN.getType('string') // Returns String\n```",
+      "code": null,
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": null,
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  },
+  "namespaces": [
+    "NET",
+    "DATA"
+  ],
+  "classes": [
+    {
+      "href": "/NGN/EventEmitter.json",
+      "name": "NGN.EventEmitter"
+    }
+  ]
+}

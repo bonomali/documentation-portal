@@ -1,0 +1,481 @@
+{
+  "type": "class",
+  "label": "NGN.NET.Resource",
+  "description": "Represents the current global query paramaters.\r\n  \n  This is commonly used when a remote resource requires a specific\r\n  query paramater on every call.\r\n  \n  Example\n  \n  ```js\r\n  let resource = new NGN.NET.Resource(...)\r\n  \n  resource.query = {\r\n    'user_id': '12345'\r\n  }\r\n  ```\r\n  \n  All parameter values are automatically URL-encoded.",
+  "code": "class NetworkResource extends Network {\r\n  constructor (cfg) {\r\n    super()\r\n\r\n    cfg = cfg || {}\r\n\r\n    Object.defineProperties(this, {\r\n      /**\r\n       * @cfg {object} headers\r\n       * Contains headers (key/value) that are applied to all requests.\r\n       */\r\n      globalHeaders: NGN.private(NGN.coalesceb(cfg.headers, {})),\r\n\r\n      /**\r\n       * @cfg {object} credentials\r\n       * Contains credentials that are applied to all requests.\r\n       * @private\r\n       */\r\n      globalCredentials: NGN.private(NGN.coalesceb(cfg.credentials, {})),\r\n\r\n      /**\r\n       * @cfg {string} username\r\n       * Use this to set a username (instead of using #credentials).\r\n       */\r\n      user: NGN.private(NGN.coalesceb(cfg.username)),\r\n\r\n      /**\r\n       * @cfg {string} password\r\n       * Use this to set a password (instead of using #credentials).\r\n       */\r\n      secret: NGN.private(NGN.coalesceb(cfg.password)),\r\n\r\n      /**\r\n       * @cfg {string} accessToken\r\n       * Use this to set an access token (instead of using #credentials).\r\n       */\r\n      accesstoken: NGN.private(NGN.coalesceb(cfg.token, cfg.accessToken)),\r\n\r\n      /**\r\n       * @cfg {object} query\r\n       * Contains query parameters to be applied to all requests. All values\r\n       * are automatically url-encoded.\r\n       */\r\n      globalQuery: NGN.private(NGN.coalesceb(cfg.query, {})),\r\n\r\n      /**\r\n       * @cfg {string} [baseUrl=window.loction.origin]\r\n       * The root domain/base URL to apply to all requests to relative URL's.\r\n       * This was designed for uses where a backend API may be served on\r\n       * another domain (such as api.mydomain.com instead of www.mydomain.com).\r\n       * The root will only be applied to relative paths that do not begin\r\n       * with a protocol. For example, `./path/to/endpoint` **will** have\r\n       * the root applied (`{root}/path/to/endpoint`) whereas `https://domain.com/endpoint`\r\n       * will **not** have the root applied.\r\n       */\r\n      baseUrl: NGN.private(NGN.coalesce(cfg.baseUrl, cfg.baseurl, `http://${hostname}/`)),\r\n\r\n      /**\r\n       * @cfg {boolean} [nocache=false]\r\n       * Set this to `true` to add a unique cache-busting URL parameter to all requests.\r\n       */\r\n      nocache: NGN.private(NGN.coalesce(cfg.nocache, false)),\r\n\r\n      /**\r\n       * @cfg {boolean} [sslonly=false]\r\n       * Set this to true to rewrite all URL's to use HTTPS.\r\n       */\r\n      sslonly: NGN.public(NGN.coalesce(cfg.sslonly, false))\r\n    })\r\n\r\n    if (this.baseUrl.indexOf('://') < 0 || this.baseUrl.indexOf('://') > 10) {\r\n      this.baseUrl = `http${this.sslonly ? 's' : ''}://${this.baseUrl}`\r\n    } else if (this.sslonly) {\r\n      this.baseUrl = this.baseUrl.replace('http://', 'https://')\r\n    }\r\n\r\n    if (this.accesstoken !== null) {\r\n      this.credentials = {\r\n        accessToken: this.accesstoken\r\n      }\r\n    } else if (this.user !== null && this.ssecret !== null) {\r\n      this.credentials = {\r\n        username: this.user,\r\n        password: this.secret\r\n      }\r\n    }\r\n  }\r\n\r\n  get username () {\r\n    return this.user\r\n  }\r\n\r\n  set username (value) {\r\n    if (this.user !== value) {\r\n      this.user = value\r\n\r\n      if (this.secret !== null) {\r\n        this.credentials = {\r\n          username: this.user,\r\n          password: this.secret\r\n        }\r\n      }\r\n    }\r\n  }\r\n\r\n  set password (value) {\r\n    if (this.secret !== value) {\r\n      this.secret = value\r\n\r\n      if (this.user !== null) {\r\n        this.credentials = {\r\n          username: this.user,\r\n          password: this.secret\r\n        }\r\n      }\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @property {object} headers\r\n   * Represents the current global headers.\r\n   *\r\n   * This is commonly used when a remote resource requires a specific\r\n   * header on every call.\r\n   *\r\n   * **Example**\r\n   *\r\n   * ```js\r\n   * let resource = new NGN.NET.Resource(...)\r\n   *\r\n   * resource.headers = {\r\n   *   'user-agent': 'my custom agent name'\r\n   * }\r\n   * ```\r\n   */\r\n  get headers () {\r\n    return this.globalHeaders\r\n  }\r\n\r\n  set headers (value) {\r\n    this.globalHeaders = value\r\n  }\r\n\r\n  /**\r\n   * @property credentials\r\n   * Configure credentials that are applied to every request.\r\n   * This is commonly used when communicating with a RESTful API.\r\n   * This can accept a username and password or an access token.\r\n   *\r\n   * **Examples**\r\n   *\r\n   * ```js\r\n   *  let resource = new NGN.NET.Resource(...)\r\n   *\r\n   *  resource.credentials = {\r\n   *    username: 'user',\r\n   *    password: 'pass'\r\n   *  }\r\n   * ```\r\n   *\r\n   * ```js\r\n   * resource.credentials = {\r\n   *   accessToken: 'token'\r\n   * }\r\n   * ```\r\n   */\r\n  set credentials (credentials) {\r\n    if (credentials.hasOwnProperty('accesstoken') || credentials.hasOwnProperty('accessToken') || credentials.hasOwnProperty('token')) {\r\n      credentials.accessToken = NGN.coalesce(credentials.accessToken, credentials.accesstoken, credentials.token)\r\n\r\n      if (credentials.hasOwnProperty('username')) {\r\n        delete credentials.username\r\n      }\r\n\r\n      if (credentials.hasOwnProperty('password')) {\r\n        delete credentials.password\r\n      }\r\n    } else if (!(credentials.hasOwnProperty('username') && credentials.hasOwnProperty('password')) && !credentials.hasOwnProperty('accessToken')) {\r\n      throw new Error('Invalid credentials. Must contain an access token OR the combination of a username AND password.')\r\n    }\r\n\r\n    this.globalCredentials = credentials\r\n\r\n    if (credentials.username) {\r\n      this.username = credentials.username\r\n    }\r\n\r\n    if (credentials.password) {\r\n      this.password = credentials.password\r\n    }\r\n  }\r\n\r\n  // Explicitly deny credential reading.\r\n  get credentials () {\r\n    NGN.WARN('Credentials are write-only. An attempt to read credentials was denied.')\r\n    return {\r\n      username: null,\r\n      secret: null,\r\n      password: null,\r\n      accessToken: null\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @property {object} query\r\n   * Represents the current global query paramaters.\r\n   *\r\n   * This is commonly used when a remote resource requires a specific\r\n   * query paramater on every call.\r\n   *\r\n   * **Example**\r\n   *\r\n   * ```js\r\n   * let resource = new NGN.NET.Resource(...)\r\n   *\r\n   * resource.query = {\r\n   *   'user_id': '12345'\r\n   * }\r\n   * ```\r\n   *\r\n   * All parameter values are automatically URL-encoded.\r\n   */\r\n  get query () {\r\n    return this.globalQuery\r\n  }\r\n\r\n  set query (value) {\r\n    this.globalQuery = value\r\n  }\r\n\r\n  /**\r\n   * @method prepareUrl\r\n   * Prepare a URL by applying the base URL (only when appropriate).\r\n   * @param  {string} uri\r\n   * The universal resource indicator (URI/URL) to prepare.\r\n   * @return {string}\r\n   * Returns a fully qualified URL.\r\n   * @private\r\n   */\r\n  prepareUrl (uri) {\r\n    if (uri.indexOf('://') < 0) {\r\n      uri = normalizeUrl(`${this.baseUrl}/${uri}`)\r\n    }\r\n\r\n    return uri.replace(/\\/{2,5}/gi, '/').replace(/:\\/{1}/i, '://')\r\n  }\r\n\r\n  /**\r\n   * @method preflight\r\n   * Prepares a request before it is sent.\r\n   * @param {NGN.NET.Request} request\r\n   * The request object.\r\n   * @private\r\n   */\r\n  preflight (request) {\r\n    // Apply the base URL\r\n    request.url = this.prepareUrl(request.url)\r\n\r\n    // If global query parameters have been defined, apply them.\r\n    let qp = Object.keys(this.globalQuery)\r\n    if (qp.length > 0) {\r\n      let queryString = []\r\n      for (let i = 0; i < qp.length; i++) {\r\n        queryString.push(`${qp[i]}=${encodeURIComponent(this.globalQuery[qp[i]])}`)\r\n      }\r\n\r\n      if (request.query === '') {\r\n        request.url = `${request.url}?${queryString.join('&')}`\r\n      } else {\r\n        request.url = `${request.url}&${queryString.join('&')}`\r\n      }\r\n    }\r\n\r\n    // If global credentials are available, apply them.\r\n    let gHeaders = Object.keys(this.globalHeaders)\r\n    for (let i = 0; i < gHeaders.length; i++) {\r\n      request.setHeader(gHeaders[i], this.globalHeaders[gHeaders[i]])\r\n    }\r\n\r\n    // If global headers/credentials are available, apply them.\r\n    if (this.globalCredentials.accessToken) {\r\n      request.accessToken = this.globalCredentials.accessToken\r\n    } else if (this.globalCredentials.username) {\r\n      request.username = this.globalCredentials.username\r\n      request.password = this.globalCredentials.password\r\n    }\r\n\r\n    // Add a cache buster\r\n    if (this.nocache) {\r\n      request.setQueryParameter('nocache' + (new Date()).getTime().toString() + Math.random().toString().replace('.', ''), null)\r\n    }\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 55,
+    "column": 15
+  },
+  "end": {
+    "line": 347,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "net/Resource.js",
+  "extends": "NGN.NET",
+  "configuration": {
+    "headers": {
+      "type": "property",
+      "label": "headers",
+      "description": "Contains headers  that are applied to all requests.",
+      "code": "globalHeaders: NGN.private(NGN.coalesceb(cfg.headers, {}))",
+      "start": {
+        "line": 66,
+        "column": 6
+      },
+      "end": {
+        "line": 66,
+        "column": 64
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "object",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "credentials": {
+      "type": "property",
+      "label": "credentials",
+      "description": "Contains credentials that are applied to all requests.",
+      "code": "globalCredentials: NGN.private(NGN.coalesceb(cfg.credentials, {}))",
+      "start": {
+        "line": 73,
+        "column": 6
+      },
+      "end": {
+        "line": 73,
+        "column": 72
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "object",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "username": {
+      "type": "property",
+      "label": "username",
+      "description": "Use this to set a username .",
+      "code": "user: NGN.private(NGN.coalesceb(cfg.username))",
+      "start": {
+        "line": 79,
+        "column": 6
+      },
+      "end": {
+        "line": 79,
+        "column": 52
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "string",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "password": {
+      "type": "property",
+      "label": "password",
+      "description": "Use this to set a password .",
+      "code": "secret: NGN.private(NGN.coalesceb(cfg.password))",
+      "start": {
+        "line": 85,
+        "column": 6
+      },
+      "end": {
+        "line": 85,
+        "column": 54
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "string",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "accessToken": {
+      "type": "property",
+      "label": "accessToken",
+      "description": "Use this to set an access token .",
+      "code": "accesstoken: NGN.private(NGN.coalesceb(cfg.token, cfg.accessToken))",
+      "start": {
+        "line": 91,
+        "column": 6
+      },
+      "end": {
+        "line": 91,
+        "column": 73
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "string",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "query": {
+      "type": "property",
+      "label": "query",
+      "description": "Contains query parameters to be applied to all requests. All values\nare automatically url-encoded.",
+      "code": "globalQuery: NGN.private(NGN.coalesceb(cfg.query, {}))",
+      "start": {
+        "line": 98,
+        "column": 6
+      },
+      "end": {
+        "line": 98,
+        "column": 60
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "object",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "baseUrl": {
+      "type": "property",
+      "label": "baseUrl",
+      "description": "The root domain/base URL to apply to all requests to relative URL's.\nThis was designed for uses where a backend API may be served on\nanother domain .\nThe root will only be applied to relative paths that do not begin\nwith a protocol. For example, `./path/to/endpoint` **will** have\nthe root applied (`{root}/path/to/endpoint`) whereas `https://domain.com/endpoint`\nwill **not** have the root applied.",
+      "code": "baseUrl: NGN.private(NGN.coalesce(cfg.baseUrl, cfg.baseurl, `http://${hostname}/`))",
+      "start": {
+        "line": 110,
+        "column": 6
+      },
+      "end": {
+        "line": 110,
+        "column": 89
+      },
+      "flags": [],
+      "authors": [],
+      "default": "window.loction.origin",
+      "datatype": "string",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "nocache": {
+      "type": "property",
+      "label": "nocache",
+      "description": "Set this to `true` to add a unique cache-busting URL parameter to all requests.",
+      "code": "nocache: NGN.private(NGN.coalesce(cfg.nocache, false))",
+      "start": {
+        "line": 116,
+        "column": 6
+      },
+      "end": {
+        "line": 116,
+        "column": 60
+      },
+      "flags": [],
+      "authors": [],
+      "default": "false",
+      "datatype": "boolean",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "sslonly": {
+      "type": "property",
+      "label": "sslonly",
+      "description": "Set this to true to rewrite all URL's to use HTTPS.",
+      "code": "sslonly: NGN.public(NGN.coalesce(cfg.sslonly, false))",
+      "start": {
+        "line": 122,
+        "column": 6
+      },
+      "end": {
+        "line": 122,
+        "column": 59
+      },
+      "flags": [],
+      "authors": [],
+      "default": "false",
+      "datatype": "boolean",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": false
+    }
+  },
+  "properties": {
+    "username": {
+      "type": "property",
+      "label": "username",
+      "description": null,
+      "code": "set username (value) {\r\n    if (this.user !== value) {\r\n      this.user = value\r\n\r\n      if (this.secret !== null) {\r\n        this.credentials = {\r\n          username: this.user,\r\n          password: this.secret\r\n        }\r\n      }\r\n    }\r\n  }",
+      "start": {
+        "line": 147,
+        "column": 2
+      },
+      "end": {
+        "line": 158,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "password": {
+      "type": "property",
+      "label": "password",
+      "description": null,
+      "code": "set password (value) {\r\n    if (this.secret !== value) {\r\n      this.secret = value\r\n\r\n      if (this.user !== null) {\r\n        this.credentials = {\r\n          username: this.user,\r\n          password: this.secret\r\n        }\r\n      }\r\n    }\r\n  }",
+      "start": {
+        "line": 160,
+        "column": 2
+      },
+      "end": {
+        "line": 171,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "headers": {
+      "type": "property",
+      "label": "headers",
+      "description": null,
+      "code": "set headers (value) {\r\n    this.globalHeaders = value\r\n  }",
+      "start": {
+        "line": 194,
+        "column": 2
+      },
+      "end": {
+        "line": 196,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "credentials": {
+      "type": "property",
+      "label": "credentials",
+      "description": null,
+      "code": "get credentials () {\r\n    NGN.WARN('Credentials are write-only. An attempt to read credentials was denied.')\r\n    return {\r\n      username: null,\r\n      secret: null,\r\n      password: null,\r\n      accessToken: null\r\n    }\r\n  }",
+      "start": {
+        "line": 248,
+        "column": 2
+      },
+      "end": {
+        "line": 256,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "query": {
+      "type": "property",
+      "label": "query",
+      "description": null,
+      "code": "set query (value) {\r\n    this.globalQuery = value\r\n  }",
+      "start": {
+        "line": 281,
+        "column": 2
+      },
+      "end": {
+        "line": 283,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor (cfg) {\r\n    super()\r\n\r\n    cfg = cfg || {}\r\n\r\n    Object.defineProperties(this, {\r\n      /**\r\n       * @cfg {object} headers\r\n       * Contains headers (key/value) that are applied to all requests.\r\n       */\r\n      globalHeaders: NGN.private(NGN.coalesceb(cfg.headers, {})),\r\n\r\n      /**\r\n       * @cfg {object} credentials\r\n       * Contains credentials that are applied to all requests.\r\n       * @private\r\n       */\r\n      globalCredentials: NGN.private(NGN.coalesceb(cfg.credentials, {})),\r\n\r\n      /**\r\n       * @cfg {string} username\r\n       * Use this to set a username (instead of using #credentials).\r\n       */\r\n      user: NGN.private(NGN.coalesceb(cfg.username)),\r\n\r\n      /**\r\n       * @cfg {string} password\r\n       * Use this to set a password (instead of using #credentials).\r\n       */\r\n      secret: NGN.private(NGN.coalesceb(cfg.password)),\r\n\r\n      /**\r\n       * @cfg {string} accessToken\r\n       * Use this to set an access token (instead of using #credentials).\r\n       */\r\n      accesstoken: NGN.private(NGN.coalesceb(cfg.token, cfg.accessToken)),\r\n\r\n      /**\r\n       * @cfg {object} query\r\n       * Contains query parameters to be applied to all requests. All values\r\n       * are automatically url-encoded.\r\n       */\r\n      globalQuery: NGN.private(NGN.coalesceb(cfg.query, {})),\r\n\r\n      /**\r\n       * @cfg {string} [baseUrl=window.loction.origin]\r\n       * The root domain/base URL to apply to all requests to relative URL's.\r\n       * This was designed for uses where a backend API may be served on\r\n       * another domain (such as api.mydomain.com instead of www.mydomain.com).\r\n       * The root will only be applied to relative paths that do not begin\r\n       * with a protocol. For example, `./path/to/endpoint` **will** have\r\n       * the root applied (`{root}/path/to/endpoint`) whereas `https://domain.com/endpoint`\r\n       * will **not** have the root applied.\r\n       */\r\n      baseUrl: NGN.private(NGN.coalesce(cfg.baseUrl, cfg.baseurl, `http://${hostname}/`)),\r\n\r\n      /**\r\n       * @cfg {boolean} [nocache=false]\r\n       * Set this to `true` to add a unique cache-busting URL parameter to all requests.\r\n       */\r\n      nocache: NGN.private(NGN.coalesce(cfg.nocache, false)),\r\n\r\n      /**\r\n       * @cfg {boolean} [sslonly=false]\r\n       * Set this to true to rewrite all URL's to use HTTPS.\r\n       */\r\n      sslonly: NGN.public(NGN.coalesce(cfg.sslonly, false))\r\n    })\r\n\r\n    if (this.baseUrl.indexOf('://') < 0 || this.baseUrl.indexOf('://') > 10) {\r\n      this.baseUrl = `http${this.sslonly ? 's' : ''}://${this.baseUrl}`\r\n    } else if (this.sslonly) {\r\n      this.baseUrl = this.baseUrl.replace('http://', 'https://')\r\n    }\r\n\r\n    if (this.accesstoken !== null) {\r\n      this.credentials = {\r\n        accessToken: this.accesstoken\r\n      }\r\n    } else if (this.user !== null && this.ssecret !== null) {\r\n      this.credentials = {\r\n        username: this.user,\r\n        password: this.secret\r\n      }\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 56,
+        "column": 2
+      },
+      "end": {
+        "line": 141,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "cfg": {
+          "type": "argument",
+          "label": "cfg",
+          "description": null,
+          "code": "cfg",
+          "start": {
+            "line": 56,
+            "column": 15
+          },
+          "end": {
+            "line": 56,
+            "column": 18
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "prepareUrl": {
+      "type": "method",
+      "label": "prepareUrl",
+      "description": "Prepare a URL by applying the base URL .",
+      "code": "prepareUrl (uri) {\r\n    if (uri.indexOf('://') < 0) {\r\n      uri = normalizeUrl(`${this.baseUrl}/${uri}`)\r\n    }\r\n\r\n    return uri.replace(/\\/{2,5}/gi, '/').replace(/:\\/{1}/i, '://')\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 294,
+        "column": 2
+      },
+      "end": {
+        "line": 300,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "uri": {
+          "type": "argument",
+          "label": "uri",
+          "description": "The universal resource indicator  to prepare.",
+          "code": "uri",
+          "start": {
+            "line": 294,
+            "column": 14
+          },
+          "end": {
+            "line": 294,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": [
+            "URI/URL"
+          ]
+        }
+      },
+      "returnType": "string",
+      "returnDescription": "null Returns a fully qualified URL.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "preflight": {
+      "type": "method",
+      "label": "preflight",
+      "description": "Prepares a request before it is sent.",
+      "code": "preflight (request) {\r\n    // Apply the base URL\r\n    request.url = this.prepareUrl(request.url)\r\n\r\n    // If global query parameters have been defined, apply them.\r\n    let qp = Object.keys(this.globalQuery)\r\n    if (qp.length > 0) {\r\n      let queryString = []\r\n      for (let i = 0; i < qp.length; i++) {\r\n        queryString.push(`${qp[i]}=${encodeURIComponent(this.globalQuery[qp[i]])}`)\r\n      }\r\n\r\n      if (request.query === '') {\r\n        request.url = `${request.url}?${queryString.join('&')}`\r\n      } else {\r\n        request.url = `${request.url}&${queryString.join('&')}`\r\n      }\r\n    }\r\n\r\n    // If global credentials are available, apply them.\r\n    let gHeaders = Object.keys(this.globalHeaders)\r\n    for (let i = 0; i < gHeaders.length; i++) {\r\n      request.setHeader(gHeaders[i], this.globalHeaders[gHeaders[i]])\r\n    }\r\n\r\n    // If global headers/credentials are available, apply them.\r\n    if (this.globalCredentials.accessToken) {\r\n      request.accessToken = this.globalCredentials.accessToken\r\n    } else if (this.globalCredentials.username) {\r\n      request.username = this.globalCredentials.username\r\n      request.password = this.globalCredentials.password\r\n    }\r\n\r\n    // Add a cache buster\r\n    if (this.nocache) {\r\n      request.setQueryParameter('nocache' + (new Date()).getTime().toString() + Math.random().toString().replace('.', ''), null)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 309,
+        "column": 2
+      },
+      "end": {
+        "line": 346,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "request": {
+          "type": "argument",
+          "label": "request",
+          "description": "The request object.",
+          "code": "request",
+          "start": {
+            "line": 309,
+            "column": 13
+          },
+          "end": {
+            "line": 309,
+            "column": 20
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "ngn.net.request",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    }
+  }
+}

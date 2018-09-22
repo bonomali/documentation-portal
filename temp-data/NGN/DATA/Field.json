@@ -1,0 +1,1154 @@
+{
+  "type": "class",
+  "label": "NGN.DATA.Field",
+  "description": "The changelog returns the underlying NGN.DATA.TransactionLog#log if\r\n  auditing is available. The array will be empty if auditing is disabled.",
+  "code": "class NGNDataField extends EventEmitter { // eslint-disable-line\r\n  /**\r\n   * @param {string|object} configuration\r\n   * Accepts an object with all configuration objects, or a string representing\r\n   * the name of the field.\r\n   */\r\n  constructor (cfg) {\r\n    cfg = cfg || {}\r\n\r\n    if (typeof cfg === 'string') {\r\n      cfg = {\r\n        name: cfg\r\n      }\r\n    }\r\n\r\n    // Validate field configuration values\r\n    if (cfg.hasOwnProperty('pattern') && NGN.typeof(cfg.pattern) !== 'regexp') {\r\n      throw new Error('Invalid data field configuration. Pattern must be a valid JavaScript regular expression (RegExp).')\r\n    }\r\n\r\n    if (cfg.type === undefined) {\r\n      if (cfg.default) {\r\n        cfg.type = NGN.getType(NGN.typeof(cfg.default), String)\r\n      }\r\n    }\r\n\r\n    super(cfg)\r\n\r\n    const EMPTYDATA = Symbol('empty')\r\n\r\n    Object.defineProperties(this, {\r\n      METADATA: NGN.privateconst({\r\n        /**\r\n         * @cfg {boolean} [required=false]\r\n         * Indicates the value is required.\r\n         */\r\n        required: NGN.coalesce(cfg.required, false),\r\n\r\n        /**\r\n         * @cfgproperty {boolean} [hidden=false]\r\n         * Indicates the field is hidden (metadata).\r\n         */\r\n        hidden: NGN.coalesce(cfg.hidden, false),\r\n\r\n        // Identifies the property as a standard data attribute.\r\n        // Alternative options include `data`, `key`, `join`, `virtual`.\r\n        fieldType: NGN.coalesce(cfg.identifier, false) ? 'key' : 'data',\r\n\r\n        isIdentifier: NGN.coalesce(cfg.identifier, false),\r\n\r\n        /**\r\n         * @cfg {boolean} [autocorrectInput=true]\r\n         * Attempt to automatically correct data type values. For example,\r\n         * a numeric field receiving a value of `'10'` will automatically\r\n         * convert the input to `10`. Only arrays, numbers, and booleans are\r\n         * supported. See NGN#forceArray, NGN#forceBoolean, and NGN#forceNumber\r\n         * for details.\r\n         */\r\n        autocorrectInput: NGN.coalesce(cfg.autocorrectInput, false),\r\n\r\n        /**\r\n         * @cfg {RegExp} [pattern]\r\n         * A pattern, as defined by a standard RegExp, that the data must match.\r\n         */\r\n        pattern: NGN.coalesceb(cfg.pattern),\r\n\r\n        /**\r\n         * @cfgproperty {string} name\r\n         * The field name.\r\n         */\r\n        name: NGN.coalesce(cfg.name),\r\n\r\n        /**\r\n         * @cfgproperty {string} description\r\n         * This is a metadata field, primarily used for documentation\r\n         * or schema generation purposes.\r\n         */\r\n        description: NGN.coalesce(cfg.description, `${NGN.typeof(cfg.type)} field`),\r\n\r\n        /**\r\n         * @cfgproperty {string} [sourceName]\r\n         * A source name represents the physical name of an attribute as it\r\n         * would be recognized in a system of record. For example, a field\r\n         * named `firstname` may need to be written to disk/memory as `gn`\r\n         * (commonly used as shorthand for givenName in LDAP environments\r\n         * and relational databases).\r\n         *\r\n         * By specifying `firstname` as the field name and `gn` as the source\r\n         * name, the field will automatically map values from the source\r\n         * to model name and vice versa.\r\n         *\r\n         * For instance, a JSON input may look like:\r\n         *\r\n         * ```js\r\n         * {\r\n         *   \"gn\": \"John\",\r\n         *   \"sn\": \"Doe\"\r\n         * }\r\n         * ```\r\n         *\r\n         * When this data is applied to the field (or loaded in a\r\n         * NGN.DATA.Model), the field #value for `firstname` would be `John`.\r\n         * If the field #value is changed to `Jill` (i.e.\r\n         * `firstname.value = 'Jill'`), the resulting data set would look like:\r\n         *\r\n         * ```js\r\n         * {\r\n         *   \"gn\": \"Jill\",\r\n         *   \"sn\": \"Doe\"\r\n         * }\r\n         * ```\r\n         */\r\n        sourceName: NGN.coalesce(cfg.sourceName),\r\n\r\n        /**\r\n         * @cfg {any} default\r\n         * The default value of the field when no value is specified.\r\n         */\r\n        default: NGN.coalesce(cfg.default),\r\n\r\n        lastValue: Symbol('no.value'),\r\n\r\n        /**\r\n         * @cfg {Primitive} [type=String]\r\n         * The JS primitive representing the type of data represented\r\n         * by the field.\r\n         */\r\n        dataType: NGN.coalesce(cfg.type, String),\r\n\r\n        /**\r\n         * @cfg {function} [rule[]]\r\n         * A function, or an array of functions, which determine whether the\r\n         * field value is valid or not. These functions receive a single argument\r\n         * (the data value) and must return a Boolean value.\r\n         */\r\n        rules: NGN.coalesce(cfg.rule, cfg.rules, cfg.validators, []),\r\n        violatedRule: null,\r\n\r\n        /**\r\n         * @cfg {boolean} [allowInvalid=true]\r\n         * If this is set to `false`, invalid values will throw an error.\r\n         */\r\n        allowInvalid: NGN.coalesce(cfg.allowInvalid, true),\r\n\r\n        /**\r\n         * @cfg {function} transformer\r\n         * A synchronous transformation function will be applied each time\r\n         * the field value is set. This can be used to modify data _before_ it\r\n         * is stored as a field value. The returned value from the function\r\n         * will be the new value of the field.\r\n         *\r\n         * The transformation function will receive the input as it's only\r\n         * aregument. For example:\r\n         *\r\n         * ```js\r\n         * let field = new NGN.DATA.Field({\r\n         *   name: 'testfield',\r\n         *   transformer: function (input) {\r\n         *     return input + '_test'\r\n         *   }\r\n         * })\r\n         *\r\n         * field.value = 'a'\r\n         *\r\n         * console.log(field.value) // Outputs \"a_test\"\r\n         * ```\r\n         *\r\n         * **Transformations can affect performance.** In small data sets,\r\n         * transformations are typically negligible, only adding a few\r\n         * milliseconds to processing time. This may affect large data sets,\r\n         * particularly data stores using defauly bulk recod loading.\r\n         */\r\n        TRANSFORM: NGN.coalesce(cfg.transformer),\r\n\r\n        RAWDATAPLACEHOLDER: EMPTYDATA,\r\n        RAW: EMPTYDATA,\r\n        ENUMERABLE_VALUES: null,\r\n        REVERSE_ENUMERABLE_VALUES: null,\r\n        IS_NEW: true,\r\n\r\n        EVENTS: new Set([\r\n          'hidden',\r\n          'unhidden',\r\n          'update',\r\n          'invalid',\r\n          'valid',\r\n          'rule.add',\r\n          'rule.remove'\r\n        ]),\r\n\r\n        /**\r\n         * @cfg {boolean} [audit=false]\r\n         * Enable auditing to support #undo/#redo operations. This creates and\r\n         * manages a NGN.DATA.TransactionLog.\r\n         */\r\n        AUDITABLE: NGN.coalesce(cfg.audit, false),\r\n\r\n        /**\r\n         * @cfg {Number} [auditMaxEntries=20]\r\n         * The maximum number of historical records to maintain for the field.\r\n         * See NGN.DATA.TransactionLog#constructor for details.\r\n         */\r\n        AUDITLOG: NGN.coalesce(cfg.audit, false)\r\n          ? new NGN.DATA.TransactionLog(NGN.coalesce(cfg.auditMaxEntries, 10))\r\n          : null,\r\n\r\n        /**\r\n         * @cfg {NGN.DATA.Model} [model]\r\n         * Optionally specify the parent model.\r\n         */\r\n        model: null,\r\n\r\n        // Set the value using a configuration.\r\n        setValue: (value, suppressEvents = false, ignoreAudit = false) => {\r\n          // Preprocessing (transform input)\r\n          if (this.METADATA.TRANSFORM !== null && NGN.isFn(this.METADATA.TRANSFORM)) {\r\n            value = this.METADATA.TRANSFORM.call(this, value)\r\n          }\r\n\r\n          // Attempt to auto-correct input when possible.\r\n          if (this.METADATA.autocorrectInput && this.type !== NGN.typeof(value)) {\r\n            value = this.autoCorrectValue(value)\r\n          }\r\n\r\n          // Ignore changes when the value hasn't been modified.\r\n          if (value === this.value) {\r\n            return\r\n          }\r\n\r\n          let change = {\r\n            field: this,\r\n            old: typeof this.METADATA.RAW === 'symbol' ? undefined : this.METADATA.RAW,\r\n            new: value\r\n          }\r\n\r\n          let priorValueIsValid = this.valid\r\n\r\n          this.METADATA.RAW = value\r\n\r\n          // Notify when an invalid value is detected.\r\n          if (!this.valid) {\r\n            // If invalid values are explicitly prohibited, throw an error.\r\n            // The value is rolled back before throwing the error so developers may\r\n            // catch the error and continue processing.\r\n            if (!this.METADATA.allowInvalid) {\r\n              this.METADATA.RAW = change.old\r\n              throw new Error(`\"${value}\" did not pass the ${this.METADATA.violatedRule} rule.`)\r\n            } else {\r\n              change.reason = `\"${value}\" did not pass the ${this.METADATA.violatedRule} rule.`\r\n              NGN.WARN(change.reason)\r\n            }\r\n\r\n            this.emit('invalid', change)\r\n          } else if (!suppressEvents && priorValueIsValid !== null && priorValueIsValid) {\r\n            // If the field BECAME valid (compared to prior value),\r\n            // emit an event.\r\n            this.emit('valid', change)\r\n          }\r\n\r\n          if (typeof this.METADATA.lastValue === 'symbol') {\r\n            this.METADATA.lastValue = value\r\n          }\r\n\r\n          // If auditing is enabled and not explicitly ignored by an internal\r\n          // operation, commit the change.\r\n          if (!ignoreAudit && !this.virtual && this.METADATA.AUDITABLE) {\r\n            change.cursor = this.METADATA.AUDITLOG.commit(this.METADATA.RAW)\r\n          }\r\n\r\n          // Notify when the update is complete.\r\n          if (!suppressEvents) {\r\n            this.emit('update', change)\r\n          }\r\n\r\n          // Mark unnecessary code for garbage collection.\r\n          priorValueIsValid = null\r\n          change = null\r\n        },\r\n\r\n        // Submit the payload to the parent model (if applicable).\r\n        commitPayload: (payload) => {\r\n          if (this.METADATA.model) {\r\n            payload.action = 'update'\r\n            payload.join = true\r\n\r\n            this.increaseMaxListeners(3)\r\n            this.METADATA.model.emit(\r\n              [\r\n                'update',\r\n                `${payload.field}.update`,\r\n                `update.${payload.field}`\r\n              ],\r\n              payload\r\n            )\r\n\r\n            payload = null // Mark for garbage collection\r\n          }\r\n        }\r\n      })\r\n    })\r\n\r\n    // Apply common rules\r\n    if (NGN.typeof(this.METADATA.rules) !== 'array') {\r\n      this.METADATA.rules = NGN.forceArray(this.METADATA.rules)\r\n    }\r\n\r\n    if (this.METADATA.rules.length > 0) {\r\n      for (let i = 0; i < this.METADATA.rules.length; i++) {\r\n        if (NGN.isFn(this.METADATA.rules[i]) && !(this.METADATA.rules[i] instanceof NGN.DATA.Rule)) {\r\n          this.METADATA.rules[i] = new NGN.DATA.Rule(this.METADATA.rules[i], `Custom Rule #${i + 1}`)\r\n        }\r\n      }\r\n    }\r\n\r\n    // Apply pattern validation if specified.\r\n    if (this.METADATA.dataType === String) {\r\n      if (this.METADATA.pattern !== null) {\r\n        this.METADATA.rules.unshift(new NGN.DATA.Rule(cfg.pattern, `Pattern Match (${cfg.pattern.toString()})`))\r\n      }\r\n\r\n      /**\r\n       * @cfg {Boolean} [nonempty]\r\n       * @info This validation attribute applies to #String fields only.\r\n       * Validates a value is not blank, `null`, or `undefined`.\r\n       */\r\n      if (cfg.nonempty) {\r\n        this.METADATA.rules.unshift(new NGN.DATA.Rule(value => {\r\n          return value.trim().length > 0\r\n        }, `No Blanks (${cfg.pattern.toString()})`))\r\n      }\r\n    }\r\n\r\n    /**\r\n     * @cfg {Number} [min]\r\n     * @info This validation attribute applies to #Array, #String, and #Number fields only.\r\n     * Specify a minimum value:\r\n     *\r\n     * - For string values, this is a minimum number of characters.\r\n     * - For numeric values, this is a minimum inclusive value (i.e. value must be greater than\r\n     * or equal to the minimum).\r\n     * - For arrays, this is a minimum number of items that must exist in the array.\r\n     */\r\n    /**\r\n     * @cfg {Number} [max]\r\n     * @info This validation attribute applies to #Array, #String, and #Number fields only.\r\n     * Specify a maximum value:\r\n     *\r\n     * - For string values, this is a maximum number of characters.\r\n     * - For numeric values, this is a maximum inclusive value (i.e. value must be less than\r\n     * or equal to the maximum).\r\n     * - For arrays, this is a maximum number of items that may exist in the array.\r\n     */\r\n\r\n    // Apply number-specific validations.\r\n    if (this.METADATA.dataType === Number || this.METADATA.dataType === Date || this.METADATA.dataType === String) {\r\n      // Support minimum/maximum range\r\n      if (NGN.objectHasAny(cfg, 'min', 'minimum', 'max', 'maximum')) {\r\n        cfg.range = NGN.forceArray(NGN.coalesce(cfg.range))\r\n        cfg.range.push([NGN.coalesce(cfg.min, cfg.minimum), NGN.coalesce(cfg.max, cfg.maximum)])\r\n      }\r\n\r\n      /**\r\n       * @cfg {Number} [range]\r\n       * @info This validation attribute applies to #String and #Number fields only.\r\n       * Specify a range of acceptable values:\r\n       *\r\n       * - For numbers, this implies inclusive ranges. For example, `1-10` means \"between 1 and 10, where both 1 and 10 are valid.\"\r\n       * - For strings, this implies inclusive ranges just like numbers, where the number is the character count.\r\n       */\r\n      if (cfg.hasOwnProperty('range')) {\r\n        this.METADATA.rules.unshift(new NGN.DATA.RangeRule('Numeric Range', cfg.range))\r\n      }\r\n\r\n      if (this.METADATA.dataType === Number) {\r\n        // Support numeric patterns (i.e. support for integers)\r\n        if (NGN.coalesce(cfg.pattern)) {\r\n          this.METADATA.rules.unshift(new NGN.DATA.Rule(value => {\r\n            return cfg.pattern.test(value.toString())\r\n          }, `Numeric Pattern (${cfg.pattern.toString().substr(0, 15) + (cfg.pattern.toString().length > 15 ? '...' : '')})`))\r\n        }\r\n\r\n        /**\r\n         * @cfg {Number} [multipleOf]\r\n         * @info This validation attribute applies to #Number fields only.\r\n         * Insures the field value is a multiple of this number. For example,\r\n         * if the multiple is `10` and the value is `100`, it is valid.\r\n         * If the multiple is `10` and the value is `101`, it is invalid.\r\n         */\r\n        if (NGN.typeof(cfg.multipleOf) === 'number') {\r\n          this.METADATA.rules.unshift(new NGN.DATA.Rule(value => {\r\n            return Math.abs(value % cfg.multipleOf) === 0\r\n          }, `Numeric Multiple of ${cfg.multipleOf}`))\r\n        }\r\n      }\r\n    }\r\n\r\n    // Apply array-specific native validations\r\n    if (this.METADATA.dataType === Array) {\r\n      // Enforce minimum number of array items\r\n      if (NGN.objectHasAny(cfg, 'min', 'minimum')) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => value.length >= NGN.coalesce(cfg.min, cfg.minimum), `${NGN.coalesce(cfg.min, cfg.minimum)} count minimum`))\r\n      }\r\n\r\n      // Enforce maximum number of array items\r\n      if (NGN.objectHasAny(cfg, 'max', 'maximum')) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => value.length <= NGN.coalesce(cfg.max, cfg.maximum), `${NGN.coalesce(cfg.max, cfg.maximum)} count maximum`))\r\n      }\r\n\r\n      /**\r\n       * @cfg {Array} [unique]\r\n       * @info This validation attribute applies to #Array fields only.\r\n       * @warning This is a computationally expensive validation when used in NGN Data Stores.\r\n       * Validates that all items are unique.\r\n       */\r\n      if (NGN.coalesce(cfg.unique, false)) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => NGN.dedupe(value).length === value.length, 'Unique value constraint'))\r\n      }\r\n\r\n      /**\r\n       * @cfg {any} [listType]\r\n       * @info This validation attribute applies to #Array fields only.\r\n       * Require each element of the array to conform to the specified data\r\n       * type. For example, setting `listType: Number` will validate that\r\n       * each element of the array is a number.\r\n       *\r\n       * ```js\r\n       * [1, 2, 3, 4, 5] // Valid\r\n       * [1, 2, 'three', 4, 5] // Invalid\r\n       * ```\r\n       */\r\n      if (cfg.hasOwnProperty('listType')) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => {\r\n          for (let i = 0; i < value.length; i++) {\r\n            if (NGN.typeof(value[i]) !== NGN.typeof(cfg.listType)) {\r\n              return false\r\n            }\r\n          }\r\n\r\n          return true\r\n        }, `${NGN.typeof(cfg.listType).toUpperCase()} list type constraint`))\r\n      }\r\n\r\n      // Support enumerations in array values\r\n      if (cfg.hasOwnProperty('enum')) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => {\r\n          return cfg.enum.indexOf(value) >= 0\r\n        }))\r\n      }\r\n\r\n      /**\r\n       * @cfg {Array} [tuples]\r\n       * @info This validation attribute applies to #Array fields only.\r\n       * @warning This is a computationally expensive validation when used in NGN Data Stores.\r\n       * Validate each item of an array according to a unique schema.\r\n       * Each item is a key value object, which supports only the `type` and\r\n       * `enum` validations.\r\n       *\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * {\r\n       *   tuples: [{\r\n       *     type: Number\r\n       *   }, {\r\n       *     type: String,\r\n       *     enum: ['a', 'b', 'c']\r\n       *   }, {\r\n       *     enum: ['d', 1]\r\n       *   }]\r\n       * }\r\n       * ```\r\n       * The configuration above will make sure the first array item is a number,\r\n       * while the second is either `a`, `b`, or `c`, and the third is either\r\n       * the letter `d` or the number `1`. Only the first three items of the\r\n       * array will be checked, but there must be at least 3 items.\r\n       */\r\n      if (cfg.hasOwnProperty('tuples')) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => {\r\n          if (value.length < cfg.tuples.length) {\r\n            return false\r\n          }\r\n\r\n          for (let i = 0; i < cfg.tuples.length; i++) {\r\n            if (cfg.tuples[i].hasOwnProperty('type')) {\r\n              if (NGN.typeof(value[i]) !== NGN.typeof(cfg.tuples[i].type)) {\r\n                return false\r\n              }\r\n            }\r\n\r\n            if (cfg.tuples[i].hasOwnProperty('enum')) {\r\n              if (cfg.tuples[i].enum.indexOf(value[i]) < 0) {\r\n                return false\r\n              }\r\n            }\r\n          }\r\n\r\n          return true\r\n        }, 'Tuple constraint'))\r\n      }\r\n    }\r\n\r\n    /**\r\n     * @cfg {Array} [enum]\r\n     * An enumeration of available values this field is allowed to have.\r\n     */\r\n    if (NGN.objectHasAny(cfg, 'enum', 'enumeration')) {\r\n      this.METADATA.ENUMERABLE_VALUES = new Set(NGN.forceArray(NGN.coalesce(cfg.enum, cfg.enumeration)))\r\n      this.METADATA.rules.push(new NGN.DATA.Rule((value) => this.METADATA.ENUMERABLE_VALUES.has(value), 'Enumerable Values'))\r\n    }\r\n\r\n    /**\r\n     * @cfg {Array} [not]\r\n     * A \"reverse\" enumeration, i.e. a list of values this field is **not** allowed to be.\r\n     */\r\n    if (NGN.objectHasAny(cfg, 'not', 'notin')) {\r\n      this.METADATA.REVERSE_ENUMERABLE_VALUES = new Set(NGN.forceArray(NGN.coalesce(cfg.not, cfg.notin)))\r\n      this.METADATA.rules.push(new NGN.DATA.Rule((value) => !this.METADATA.REVERSE_ENUMERABLE_VALUES.has(value), 'Rejected Values'))\r\n    }\r\n\r\n    // Check if the field type is an array, which indicates multiple\r\n    // data types are considered valid.\r\n    if (cfg.type instanceof Array) {\r\n      // If the array has no values, assume the user meant to create an \"Array\" data type.\r\n      // Warn them, in case this was not the intention.\r\n      if (cfg.type.length === 0) {\r\n        NGN.WARN(`No data type specified for ${this.name} field. Autoconverted to an array.`)\r\n        cfg.type = Array\r\n      } else if (cfg.type.length === 1) {\r\n        // If there is only one data type, the array is extraneous and standard\r\n        // datatype validation can be used.\r\n        cfg.type = cfg.type[0]\r\n      }\r\n    }\r\n\r\n    /**\r\n     * @cfg {Primitive|Array} [type=String]\r\n     * The type should be a JavaScript primitive, class, or constructor.\r\n     * For example, `String`, `Number`, `Boolean`, `RegExp`, `Array`, or `Date`.\r\n     * This can also be an array of primitive values. For example, `[String, Number]`\r\n     * indicates the field could be a string or a numeric value.\r\n     */\r\n    if (cfg.type instanceof Array) {\r\n      let typeList = cfg.type.map(type => NGN.typeof(type))\r\n\r\n      this.METADATA.rules.unshift(\r\n        new NGN.DATA.Rule(\r\n          (value) => typeList.indexOf(NGN.typeof(value)) >= 0,\r\n          `${this.type.toUpperCase()} Multitype Check`\r\n        )\r\n      )\r\n    } else {\r\n      this.METADATA.rules.unshift(\r\n        new NGN.DATA.Rule(\r\n          (value) => NGN.typeof(value) === NGN.typeof(this.METADATA.dataType),\r\n          `${this.type.toUpperCase()} Type Check`\r\n        )\r\n      )\r\n    }\r\n\r\n    // Associate a model if one is defined.\r\n    if (NGN.coalesce(cfg.model) !== null) {\r\n      this.model = cfg.model\r\n    }\r\n  }\r\n\r\n  get sourceName () {\r\n    return this.METADATA.sourceName\r\n  }\r\n\r\n  get auditable () {\r\n    return this.METADATA.AUDITABLE\r\n  }\r\n\r\n  set auditable (value) {\r\n    value = NGN.forceBoolean(value)\r\n\r\n    if (value !== this.METADATA.AUDITABLE) {\r\n      this.METADATA.AUDITABLE = value\r\n      this.METADATA.AUDITLOG = value ? new NGN.DATA.TransactionLog() : null\r\n      this.METADATA.AUDITLOG.relay('*', this, 'transaction.')\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @property {NGN.DATA.Model} model\r\n   * Represents the model/record the field is associated to.\r\n   * The model may be configured once, after which this property\r\n   * becomes read-only. This will also be read-only if #model is set\r\n   * to a valid value.\r\n   */\r\n  get model () {\r\n    return this.METADATA.model\r\n  }\r\n\r\n  set model (value) {\r\n    if (this.METADATA.model === null) {\r\n      if (value instanceof NGN.DATA.Entity) {\r\n        this.METADATA.model = value\r\n\r\n        // let events = Array.from(this.METADATA.EVENTS.values())\r\n        // events.splice(events.indexOf('update'), 1)\r\n        //\r\n        this.on('update', (payload) => this.METADATA.commitPayload(payload))\r\n        //\r\n        // for (let i = 0; i < events.length; i++) {\r\n        //   this.on(events[i], () => this.METADATA.model.emit(`field.${events[i]}`, ...arguments))\r\n        // }\r\n      } else {\r\n        NGN.WARN('Invalid model.')\r\n      }\r\n    } else {\r\n      NGN.WARN('Cannot set model multiple times.')\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @property {string} fieldType\r\n   * The type of field.\r\n   */\r\n  get fieldType () {\r\n    return this.METADATA.fieldType\r\n  }\r\n\r\n  /**\r\n   * @property {boolean} required\r\n   * Indicates the field must have a non-null value.\r\n   */\r\n  get required () {\r\n    return this.METADATA.required\r\n  }\r\n\r\n  set required (value) {\r\n    this.METADATA.required = NGN.forceBoolean(value)\r\n  }\r\n\r\n  /**\r\n   * @property {string} type\r\n   * The type of data in string format.\r\n   */\r\n  get type () {\r\n    return NGN.typeof(this.METADATA.dataType)\r\n  }\r\n\r\n  /**\r\n   * @property {boolean} hidden\r\n   * Indicates the field should be considered hidden.\r\n   */\r\n  get hidden () {\r\n    return this.METADATA.hidden\r\n  }\r\n\r\n  set hidden (value) {\r\n    let originallyHidden = this.hidden\r\n    let currentlyHidden = NGN.forceBoolean(value)\r\n\r\n    if (originallyHidden !== currentlyHidden) {\r\n      this.METADATA.hidden = currentlyHidden\r\n      this.emit(originallyHidden ? 'unhidden' : 'hidden')\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @property {boolean} virtual\r\n   * Indicates the field should be considered virtual.\r\n   */\r\n  get virtual () {\r\n    return this.METADATA.fieldType === 'virtual'\r\n  }\r\n\r\n  /**\r\n   * @property {boolean} identifier\r\n   * Indicates the field is considered an identifier.\r\n   */\r\n  get identifier () {\r\n    return this.METADATA.isIdentifier\r\n  }\r\n\r\n  set identifier (value) {\r\n    value = NGN.forceBoolean(value)\r\n\r\n    if (value !== this.METADATA.isIdentifier) {\r\n      this.METADATA.isIdentifier = value\r\n      this.emit('keystatus.changed', this)\r\n    }\r\n  }\r\n\r\n  get name () {\r\n    return this.METADATA.name\r\n  }\r\n\r\n  /**\r\n   * @property {Boolean}\r\n   * Indicates the model is new or does not exist according to the persistence store.\r\n   * @private\r\n   * @readonly\r\n   */\r\n  get isNew () {\r\n    return this.METADATA.IS_NEW\r\n  }\r\n\r\n  /**\r\n   * @property {Any} default\r\n   * The default field value.\r\n   */\r\n  get default () {\r\n    if (this.isIdentifier) {\r\n      return NGN.coalesce(this.METADATA.autoid, this.METADATA.default)\r\n    }\r\n\r\n    if (NGN.isFn(this.METADATA.default) && this.type !== 'function') {\r\n      return this.METADATA.default.apply(this)\r\n    }\r\n\r\n    return this.METADATA.default\r\n  }\r\n\r\n  /**\r\n   * @property {Any} value\r\n   * The value of the field.\r\n   */\r\n  get value () {\r\n    if (typeof this.METADATA.RAW !== 'symbol') {\r\n      return this.METADATA.RAW\r\n    }\r\n\r\n    return this.METADATA.default\r\n  }\r\n\r\n  set value (value) {\r\n    this.METADATA.setValue(value)\r\n  }\r\n\r\n  /**\r\n   * @property silentValue\r\n   * A write-only attribute to set the value without triggering an update event.\r\n   * This is designed primarily for use with live update proxies to prevent\r\n   * endless event loops.\r\n   * @param {any} value\r\n   * The new value of the field.\r\n   * @private\r\n   * @writeonly\r\n   */\r\n  set silentValue (value) {\r\n    this.METADATA.setValue(value, true)\r\n  }\r\n\r\n  get modified () {\r\n    if (typeof this.META.lastValue === 'symbol') {\r\n      return false\r\n    }\r\n\r\n    return this.METADATA.lastValue !== this.value\r\n  }\r\n\r\n  /**\r\n   * @property {boolean} valid\r\n   * Indicates the field value is valid.\r\n   */\r\n  get valid () {\r\n    if (this.required && NGN.coalesce(this.METADATA.RAW) === null) {\r\n      this.METADATA.violatedRule = 'Data Required'\r\n      NGN.WARN(`${this.METADATA.name} is a required field.`)\r\n      return false\r\n    }\r\n\r\n    if (this.METADATA.rules.length > 0) {\r\n      for (let rule = 0; rule < this.METADATA.rules.length; rule++) {\r\n        if (!this.METADATA.rules[rule].test(this.METADATA.RAW)) {\r\n          this.METADATA.violatedRule = this.METADATA.rules[rule].name\r\n          return false\r\n        }\r\n      }\r\n    }\r\n\r\n    this.METADATA.violatedRule = null\r\n\r\n    return true\r\n  }\r\n\r\n  /**\r\n   * @property {String}\r\n   * Name of the rule which was violated.\r\n   */\r\n  get violatedRule () {\r\n    return NGN.coalesce(this.METADATA.violatedRule, 'None')\r\n  }\r\n\r\n  /**\r\n   * @property {Array} changelog\r\n   * The changelog returns the underlying NGN.DATA.TransactionLog#log if\r\n   * auditing is available. The array will be empty if auditing is disabled.\r\n   */\r\n  get changelog () {\r\n    if (!this.METADATA.AUDITABLE) {\r\n      NGN.WARN(`The changelog for the ${this.name} field is empty because auditing is disabled.`)\r\n      return []\r\n    }\r\n\r\n    return this.METADATA.AUDITLOG.log\r\n  }\r\n\r\n  /**\r\n   * @method undo\r\n   * A rollback function to undo changes. This operation affects\r\n   * the changelog (transaction log). To \"undo\" an \"undo\", use #redo.\r\n   * @param {number} [OperationCount=1]\r\n   * The number of operations to \"undo\". Defaults to a single operation.\r\n   * @param {boolean} [suppressEvents=false]\r\n   * Set to `true` to quietly update the value (prevents `update` event from\r\n   * firing).\r\n   */\r\n  undo (count = 1, suppressEvents = false) {\r\n    if (!this.METADATA.AUDITABLE) {\r\n      NGN.WARN(`The undo operation failed on the ${this.name} field because auditing is disabled.`)\r\n      return\r\n    }\r\n\r\n    let id = this.METADATA.AUDITLOG.rollback(count)\r\n\r\n    // Silently set the value to an older value.\r\n    this.METADATA.setValue(this.METADATA.AUDITLOG.getCommit(id).value, suppressEvents, true)\r\n  }\r\n\r\n  /**\r\n   * @method redo\r\n   * A function to reapply known changes. This operation affects\r\n   * the changelog (transaction log).\r\n   *\r\n   * The redo operation only works after an undo operation, but before a new\r\n   * value is committed to the transaction log. In other words, `undo -> redo`\r\n   * will work, but `undo -> update -> redo` will not. For details, see how\r\n   * the NGN.DATA.TransactionLog cursor system works.\r\n   * @param {number} [OperationCount=1]\r\n   * The number of operations to \"undo\". Defaults to a single operation.\r\n   * @param {boolean} [suppressEvents=false]\r\n   * Set to `true` to quietly update the value (prevents `update` event from\r\n   * firing).\r\n   */\r\n  redo (count = 1, suppressEvents = false) {\r\n    if (!this.METADATA.AUDITABLE) {\r\n      NGN.WARN(`The redo operation failed on the ${this.name} field because auditing is disabled.`)\r\n      return\r\n    }\r\n\r\n    let id = this.METADATA.AUDITLOG.advance(count)\r\n\r\n    // Silently set the value to a newer value.\r\n    this.METADATA.setValue(this.METADATA.AUDITLOG.getCommit(id).value, suppressEvents, true)\r\n  }\r\n\r\n  /**\r\n   * Hide the field.\r\n   */\r\n  hide () {\r\n    this.hidden = true\r\n  }\r\n\r\n  /**\r\n   * Unhide the field.\r\n   */\r\n  unhide () {\r\n    this.hidden = false\r\n  }\r\n\r\n  /**\r\n   * Do not throw errors whan a value is marked as invalid.\r\n   */\r\n  allowInvalid () {\r\n    this.METADATA.allowInvalid = true\r\n  }\r\n\r\n  /**\r\n   * Throw errors whan a value is marked as invalid.\r\n   */\r\n  disallowInvalid () {\r\n    this.METADATA.allowInvalid = false\r\n  }\r\n\r\n  /**\r\n   * Attempt to automatically correct a value according to the\r\n   * field's data type.\r\n   * @param  {Any} value\r\n   * The value to attempt to autocorrect.\r\n   * @return {Any}\r\n   * Returns the value after attempting to autocorrect the value.\r\n   */\r\n  autoCorrectValue (value) {\r\n    try {\r\n      switch (this.type) {\r\n        case 'number':\r\n          value = NGN.forceNumber(value)\r\n          break\r\n\r\n        case 'boolean':\r\n          value = NGN.forceBoolean(value)\r\n          break\r\n\r\n        case 'array':\r\n          value = NGN.forceArray(value)\r\n          break\r\n\r\n        case 'string':\r\n          value = value.toString()\r\n          break\r\n\r\n        case 'date':\r\n          let valueType = NGN.typeof(value)\r\n\r\n          if (valueType !== 'date') {\r\n            if (valueType === 'number') {\r\n              let dt = new Date()\r\n              dt.setTime(value)\r\n\r\n              value = dt\r\n            } else {\r\n              value = new Date(Date.parse(value))\r\n            }\r\n          }\r\n\r\n          break\r\n      }\r\n    } finally {\r\n      return value // eslint-disable-line no-unsafe-finally\r\n    }\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {
+    "hidden": {
+      "type": "event",
+      "label": "hidden",
+      "description": "Triggered when the field changes from unhidden to hidden.",
+      "code": "@fires hidden\nTriggered when the field changes from unhidden to hidden.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "unhidden": {
+      "type": "event",
+      "label": "unhidden",
+      "description": "Triggered when the field changes from hidden to unhidden.",
+      "code": "@fires unhidden\nTriggered when the field changes from hidden to unhidden.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "update": {
+      "type": "event",
+      "label": "update",
+      "description": null,
+      "code": "this.emit('update', change)",
+      "start": {
+        "line": 305,
+        "column": 12
+      },
+      "end": {
+        "line": 305,
+        "column": 39
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "change": {
+          "type": "argument",
+          "label": "change",
+          "description": null,
+          "code": "change",
+          "start": {
+            "line": 305,
+            "column": 32
+          },
+          "end": {
+            "line": 305,
+            "column": 38
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "invalid": {
+      "type": "event",
+      "label": "invalid",
+      "description": null,
+      "code": "this.emit('invalid', change)",
+      "start": {
+        "line": 286,
+        "column": 12
+      },
+      "end": {
+        "line": 286,
+        "column": 40
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "change": {
+          "type": "argument",
+          "label": "change",
+          "description": null,
+          "code": "change",
+          "start": {
+            "line": 286,
+            "column": 33
+          },
+          "end": {
+            "line": 286,
+            "column": 39
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "valid": {
+      "type": "event",
+      "label": "valid",
+      "description": null,
+      "code": "this.emit('valid', change)",
+      "start": {
+        "line": 290,
+        "column": 12
+      },
+      "end": {
+        "line": 290,
+        "column": 38
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "change": {
+          "type": "argument",
+          "label": "change",
+          "description": null,
+          "code": "change",
+          "start": {
+            "line": 290,
+            "column": 31
+          },
+          "end": {
+            "line": 290,
+            "column": 37
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "rule.add": {
+      "type": "event",
+      "label": "rule.add",
+      "description": "{NGN.DATA.Rule}\nTriggered when a new validation rule is added. The rule is emitted\nto event handlers.",
+      "code": "@fires rule.add {NGN.DATA.Rule}\nTriggered when a new validation rule is added. The rule is emitted\nto event handlers.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "rule.remove": {
+      "type": "event",
+      "label": "rule.remove",
+      "description": "{NGN.DATA.Rule}\nTriggered when a validation rule is removed. The rule is emitted\nto event handlers.",
+      "code": "@fires rule.remove {NGN.DATA.Rule}\nTriggered when a validation rule is removed. The rule is emitted\nto event handlers.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "keystatus.changed": {
+      "type": "event",
+      "label": "keystatus.changed",
+      "description": "{boolean}\nTriggered when the key  status changes. The boolean\npayload indicates whether the field is considered an identifier.",
+      "code": "@fires keystatus.changed {boolean}\nTriggered when the key (identifier) status changes. The boolean\npayload indicates whether the field is considered an identifier.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    }
+  },
+  "start": {
+    "line": 34,
+    "column": 15
+  },
+  "end": {
+    "line": 959,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/field/Field.js",
+  "extends": "EventEmitter",
+  "configuration": {},
+  "properties": {
+    "METADATA": {
+      "type": "property",
+      "label": "METADATA",
+      "description": null,
+      "code": "METADATA: NGN.privateconst({\r\n        /**\r\n         * @cfg {boolean} [required=false]\r\n         * Indicates the value is required.\r\n         */\r\n        required: NGN.coalesce(cfg.required, false),\r\n\r\n        /**\r\n         * @cfgproperty {boolean} [hidden=false]\r\n         * Indicates the field is hidden (metadata).\r\n         */\r\n        hidden: NGN.coalesce(cfg.hidden, false),\r\n\r\n        // Identifies the property as a standard data attribute.\r\n        // Alternative options include `data`, `key`, `join`, `virtual`.\r\n        fieldType: NGN.coalesce(cfg.identifier, false) ? 'key' : 'data',\r\n\r\n        isIdentifier: NGN.coalesce(cfg.identifier, false),\r\n\r\n        /**\r\n         * @cfg {boolean} [autocorrectInput=true]\r\n         * Attempt to automatically correct data type values. For example,\r\n         * a numeric field receiving a value of `'10'` will automatically\r\n         * convert the input to `10`. Only arrays, numbers, and booleans are\r\n         * supported. See NGN#forceArray, NGN#forceBoolean, and NGN#forceNumber\r\n         * for details.\r\n         */\r\n        autocorrectInput: NGN.coalesce(cfg.autocorrectInput, false),\r\n\r\n        /**\r\n         * @cfg {RegExp} [pattern]\r\n         * A pattern, as defined by a standard RegExp, that the data must match.\r\n         */\r\n        pattern: NGN.coalesceb(cfg.pattern),\r\n\r\n        /**\r\n         * @cfgproperty {string} name\r\n         * The field name.\r\n         */\r\n        name: NGN.coalesce(cfg.name),\r\n\r\n        /**\r\n         * @cfgproperty {string} description\r\n         * This is a metadata field, primarily used for documentation\r\n         * or schema generation purposes.\r\n         */\r\n        description: NGN.coalesce(cfg.description, `${NGN.typeof(cfg.type)} field`),\r\n\r\n        /**\r\n         * @cfgproperty {string} [sourceName]\r\n         * A source name represents the physical name of an attribute as it\r\n         * would be recognized in a system of record. For example, a field\r\n         * named `firstname` may need to be written to disk/memory as `gn`\r\n         * (commonly used as shorthand for givenName in LDAP environments\r\n         * and relational databases).\r\n         *\r\n         * By specifying `firstname` as the field name and `gn` as the source\r\n         * name, the field will automatically map values from the source\r\n         * to model name and vice versa.\r\n         *\r\n         * For instance, a JSON input may look like:\r\n         *\r\n         * ```js\r\n         * {\r\n         *   \"gn\": \"John\",\r\n         *   \"sn\": \"Doe\"\r\n         * }\r\n         * ```\r\n         *\r\n         * When this data is applied to the field (or loaded in a\r\n         * NGN.DATA.Model), the field #value for `firstname` would be `John`.\r\n         * If the field #value is changed to `Jill` (i.e.\r\n         * `firstname.value = 'Jill'`), the resulting data set would look like:\r\n         *\r\n         * ```js\r\n         * {\r\n         *   \"gn\": \"Jill\",\r\n         *   \"sn\": \"Doe\"\r\n         * }\r\n         * ```\r\n         */\r\n        sourceName: NGN.coalesce(cfg.sourceName),\r\n\r\n        /**\r\n         * @cfg {any} default\r\n         * The default value of the field when no value is specified.\r\n         */\r\n        default: NGN.coalesce(cfg.default),\r\n\r\n        lastValue: Symbol('no.value'),\r\n\r\n        /**\r\n         * @cfg {Primitive} [type=String]\r\n         * The JS primitive representing the type of data represented\r\n         * by the field.\r\n         */\r\n        dataType: NGN.coalesce(cfg.type, String),\r\n\r\n        /**\r\n         * @cfg {function} [rule[]]\r\n         * A function, or an array of functions, which determine whether the\r\n         * field value is valid or not. These functions receive a single argument\r\n         * (the data value) and must return a Boolean value.\r\n         */\r\n        rules: NGN.coalesce(cfg.rule, cfg.rules, cfg.validators, []),\r\n        violatedRule: null,\r\n\r\n        /**\r\n         * @cfg {boolean} [allowInvalid=true]\r\n         * If this is set to `false`, invalid values will throw an error.\r\n         */\r\n        allowInvalid: NGN.coalesce(cfg.allowInvalid, true),\r\n\r\n        /**\r\n         * @cfg {function} transformer\r\n         * A synchronous transformation function will be applied each time\r\n         * the field value is set. This can be used to modify data _before_ it\r\n         * is stored as a field value. The returned value from the function\r\n         * will be the new value of the field.\r\n         *\r\n         * The transformation function will receive the input as it's only\r\n         * aregument. For example:\r\n         *\r\n         * ```js\r\n         * let field = new NGN.DATA.Field({\r\n         *   name: 'testfield',\r\n         *   transformer: function (input) {\r\n         *     return input + '_test'\r\n         *   }\r\n         * })\r\n         *\r\n         * field.value = 'a'\r\n         *\r\n         * console.log(field.value) // Outputs \"a_test\"\r\n         * ```\r\n         *\r\n         * **Transformations can affect performance.** In small data sets,\r\n         * transformations are typically negligible, only adding a few\r\n         * milliseconds to processing time. This may affect large data sets,\r\n         * particularly data stores using defauly bulk recod loading.\r\n         */\r\n        TRANSFORM: NGN.coalesce(cfg.transformer),\r\n\r\n        RAWDATAPLACEHOLDER: EMPTYDATA,\r\n        RAW: EMPTYDATA,\r\n        ENUMERABLE_VALUES: null,\r\n        REVERSE_ENUMERABLE_VALUES: null,\r\n        IS_NEW: true,\r\n\r\n        EVENTS: new Set([\r\n          'hidden',\r\n          'unhidden',\r\n          'update',\r\n          'invalid',\r\n          'valid',\r\n          'rule.add',\r\n          'rule.remove'\r\n        ]),\r\n\r\n        /**\r\n         * @cfg {boolean} [audit=false]\r\n         * Enable auditing to support #undo/#redo operations. This creates and\r\n         * manages a NGN.DATA.TransactionLog.\r\n         */\r\n        AUDITABLE: NGN.coalesce(cfg.audit, false),\r\n\r\n        /**\r\n         * @cfg {Number} [auditMaxEntries=20]\r\n         * The maximum number of historical records to maintain for the field.\r\n         * See NGN.DATA.TransactionLog#constructor for details.\r\n         */\r\n        AUDITLOG: NGN.coalesce(cfg.audit, false)\r\n          ? new NGN.DATA.TransactionLog(NGN.coalesce(cfg.auditMaxEntries, 10))\r\n          : null,\r\n\r\n        /**\r\n         * @cfg {NGN.DATA.Model} [model]\r\n         * Optionally specify the parent model.\r\n         */\r\n        model: null,\r\n\r\n        // Set the value using a configuration.\r\n        setValue: (value, suppressEvents = false, ignoreAudit = false) => {\r\n          // Preprocessing (transform input)\r\n          if (this.METADATA.TRANSFORM !== null && NGN.isFn(this.METADATA.TRANSFORM)) {\r\n            value = this.METADATA.TRANSFORM.call(this, value)\r\n          }\r\n\r\n          // Attempt to auto-correct input when possible.\r\n          if (this.METADATA.autocorrectInput && this.type !== NGN.typeof(value)) {\r\n            value = this.autoCorrectValue(value)\r\n          }\r\n\r\n          // Ignore changes when the value hasn't been modified.\r\n          if (value === this.value) {\r\n            return\r\n          }\r\n\r\n          let change = {\r\n            field: this,\r\n            old: typeof this.METADATA.RAW === 'symbol' ? undefined : this.METADATA.RAW,\r\n            new: value\r\n          }\r\n\r\n          let priorValueIsValid = this.valid\r\n\r\n          this.METADATA.RAW = value\r\n\r\n          // Notify when an invalid value is detected.\r\n          if (!this.valid) {\r\n            // If invalid values are explicitly prohibited, throw an error.\r\n            // The value is rolled back before throwing the error so developers may\r\n            // catch the error and continue processing.\r\n            if (!this.METADATA.allowInvalid) {\r\n              this.METADATA.RAW = change.old\r\n              throw new Error(`\"${value}\" did not pass the ${this.METADATA.violatedRule} rule.`)\r\n            } else {\r\n              change.reason = `\"${value}\" did not pass the ${this.METADATA.violatedRule} rule.`\r\n              NGN.WARN(change.reason)\r\n            }\r\n\r\n            this.emit('invalid', change)\r\n          } else if (!suppressEvents && priorValueIsValid !== null && priorValueIsValid) {\r\n            // If the field BECAME valid (compared to prior value),\r\n            // emit an event.\r\n            this.emit('valid', change)\r\n          }\r\n\r\n          if (typeof this.METADATA.lastValue === 'symbol') {\r\n            this.METADATA.lastValue = value\r\n          }\r\n\r\n          // If auditing is enabled and not explicitly ignored by an internal\r\n          // operation, commit the change.\r\n          if (!ignoreAudit && !this.virtual && this.METADATA.AUDITABLE) {\r\n            change.cursor = this.METADATA.AUDITLOG.commit(this.METADATA.RAW)\r\n          }\r\n\r\n          // Notify when the update is complete.\r\n          if (!suppressEvents) {\r\n            this.emit('update', change)\r\n          }\r\n\r\n          // Mark unnecessary code for garbage collection.\r\n          priorValueIsValid = null\r\n          change = null\r\n        },\r\n\r\n        // Submit the payload to the parent model (if applicable).\r\n        commitPayload: (payload) => {\r\n          if (this.METADATA.model) {\r\n            payload.action = 'update'\r\n            payload.join = true\r\n\r\n            this.increaseMaxListeners(3)\r\n            this.METADATA.model.emit(\r\n              [\r\n                'update',\r\n                `${payload.field}.update`,\r\n                `update.${payload.field}`\r\n              ],\r\n              payload\r\n            )\r\n\r\n            payload = null // Mark for garbage collection\r\n          }\r\n        }\r\n      })",
+      "start": {
+        "line": 65,
+        "column": 6
+      },
+      "end": {
+        "line": 332,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "sourceName": {
+      "type": "property",
+      "label": "sourceName",
+      "description": null,
+      "code": "get sourceName () {\r\n    return this.METADATA.sourceName\r\n  }",
+      "start": {
+        "line": 599,
+        "column": 2
+      },
+      "end": {
+        "line": 601,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "auditable": {
+      "type": "property",
+      "label": "auditable",
+      "description": null,
+      "code": "set auditable (value) {\r\n    value = NGN.forceBoolean(value)\r\n\r\n    if (value !== this.METADATA.AUDITABLE) {\r\n      this.METADATA.AUDITABLE = value\r\n      this.METADATA.AUDITLOG = value ? new NGN.DATA.TransactionLog() : null\r\n      this.METADATA.AUDITLOG.relay('*', this, 'transaction.')\r\n    }\r\n  }",
+      "start": {
+        "line": 607,
+        "column": 2
+      },
+      "end": {
+        "line": 615,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "model": {
+      "type": "property",
+      "label": "model",
+      "description": null,
+      "code": "set model (value) {\r\n    if (this.METADATA.model === null) {\r\n      if (value instanceof NGN.DATA.Entity) {\r\n        this.METADATA.model = value\r\n\r\n        // let events = Array.from(this.METADATA.EVENTS.values())\r\n        // events.splice(events.indexOf('update'), 1)\r\n        //\r\n        this.on('update', (payload) => this.METADATA.commitPayload(payload))\r\n        //\r\n        // for (let i = 0; i < events.length; i++) {\r\n        //   this.on(events[i], () => this.METADATA.model.emit(`field.${events[i]}`, ...arguments))\r\n        // }\r\n      } else {\r\n        NGN.WARN('Invalid model.')\r\n      }\r\n    } else {\r\n      NGN.WARN('Cannot set model multiple times.')\r\n    }\r\n  }",
+      "start": {
+        "line": 628,
+        "column": 2
+      },
+      "end": {
+        "line": 647,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "fieldType": {
+      "type": "property",
+      "label": "fieldType",
+      "description": null,
+      "code": "get fieldType () {\r\n    return this.METADATA.fieldType\r\n  }",
+      "start": {
+        "line": 653,
+        "column": 2
+      },
+      "end": {
+        "line": 655,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "required": {
+      "type": "property",
+      "label": "required",
+      "description": null,
+      "code": "set required (value) {\r\n    this.METADATA.required = NGN.forceBoolean(value)\r\n  }",
+      "start": {
+        "line": 665,
+        "column": 2
+      },
+      "end": {
+        "line": 667,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "type": {
+      "type": "property",
+      "label": "type",
+      "description": null,
+      "code": "get type () {\r\n    return NGN.typeof(this.METADATA.dataType)\r\n  }",
+      "start": {
+        "line": 673,
+        "column": 2
+      },
+      "end": {
+        "line": 675,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "hidden": {
+      "type": "property",
+      "label": "hidden",
+      "description": null,
+      "code": "set hidden (value) {\r\n    let originallyHidden = this.hidden\r\n    let currentlyHidden = NGN.forceBoolean(value)\r\n\r\n    if (originallyHidden !== currentlyHidden) {\r\n      this.METADATA.hidden = currentlyHidden\r\n      this.emit(originallyHidden ? 'unhidden' : 'hidden')\r\n    }\r\n  }",
+      "start": {
+        "line": 685,
+        "column": 2
+      },
+      "end": {
+        "line": 693,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "virtual": {
+      "type": "property",
+      "label": "virtual",
+      "description": null,
+      "code": "get virtual () {\r\n    return this.METADATA.fieldType === 'virtual'\r\n  }",
+      "start": {
+        "line": 699,
+        "column": 2
+      },
+      "end": {
+        "line": 701,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "identifier": {
+      "type": "property",
+      "label": "identifier",
+      "description": null,
+      "code": "set identifier (value) {\r\n    value = NGN.forceBoolean(value)\r\n\r\n    if (value !== this.METADATA.isIdentifier) {\r\n      this.METADATA.isIdentifier = value\r\n      this.emit('keystatus.changed', this)\r\n    }\r\n  }",
+      "start": {
+        "line": 711,
+        "column": 2
+      },
+      "end": {
+        "line": 718,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "name": {
+      "type": "property",
+      "label": "name",
+      "description": null,
+      "code": "get name () {\r\n    return this.METADATA.name\r\n  }",
+      "start": {
+        "line": 720,
+        "column": 2
+      },
+      "end": {
+        "line": 722,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "isNew": {
+      "type": "property",
+      "label": "isNew",
+      "description": null,
+      "code": "get isNew () {\r\n    return this.METADATA.IS_NEW\r\n  }",
+      "start": {
+        "line": 730,
+        "column": 2
+      },
+      "end": {
+        "line": 732,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "default": {
+      "type": "property",
+      "label": "default",
+      "description": null,
+      "code": "get default () {\r\n    if (this.isIdentifier) {\r\n      return NGN.coalesce(this.METADATA.autoid, this.METADATA.default)\r\n    }\r\n\r\n    if (NGN.isFn(this.METADATA.default) && this.type !== 'function') {\r\n      return this.METADATA.default.apply(this)\r\n    }\r\n\r\n    return this.METADATA.default\r\n  }",
+      "start": {
+        "line": 738,
+        "column": 2
+      },
+      "end": {
+        "line": 748,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "value": {
+      "type": "property",
+      "label": "value",
+      "description": null,
+      "code": "set value (value) {\r\n    this.METADATA.setValue(value)\r\n  }",
+      "start": {
+        "line": 762,
+        "column": 2
+      },
+      "end": {
+        "line": 764,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "silentValue": {
+      "type": "property",
+      "label": "silentValue",
+      "description": null,
+      "code": "set silentValue (value) {\r\n    this.METADATA.setValue(value, true)\r\n  }",
+      "start": {
+        "line": 776,
+        "column": 2
+      },
+      "end": {
+        "line": 778,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "modified": {
+      "type": "property",
+      "label": "modified",
+      "description": null,
+      "code": "get modified () {\r\n    if (typeof this.META.lastValue === 'symbol') {\r\n      return false\r\n    }\r\n\r\n    return this.METADATA.lastValue !== this.value\r\n  }",
+      "start": {
+        "line": 780,
+        "column": 2
+      },
+      "end": {
+        "line": 786,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "valid": {
+      "type": "property",
+      "label": "valid",
+      "description": null,
+      "code": "get valid () {\r\n    if (this.required && NGN.coalesce(this.METADATA.RAW) === null) {\r\n      this.METADATA.violatedRule = 'Data Required'\r\n      NGN.WARN(`${this.METADATA.name} is a required field.`)\r\n      return false\r\n    }\r\n\r\n    if (this.METADATA.rules.length > 0) {\r\n      for (let rule = 0; rule < this.METADATA.rules.length; rule++) {\r\n        if (!this.METADATA.rules[rule].test(this.METADATA.RAW)) {\r\n          this.METADATA.violatedRule = this.METADATA.rules[rule].name\r\n          return false\r\n        }\r\n      }\r\n    }\r\n\r\n    this.METADATA.violatedRule = null\r\n\r\n    return true\r\n  }",
+      "start": {
+        "line": 792,
+        "column": 2
+      },
+      "end": {
+        "line": 811,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "boolean",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "violatedRule": {
+      "type": "property",
+      "label": "violatedRule",
+      "description": null,
+      "code": "get violatedRule () {\r\n    return NGN.coalesce(this.METADATA.violatedRule, 'None')\r\n  }",
+      "start": {
+        "line": 817,
+        "column": 2
+      },
+      "end": {
+        "line": 819,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "changelog": {
+      "type": "property",
+      "label": "changelog",
+      "description": null,
+      "code": "get changelog () {\r\n    if (!this.METADATA.AUDITABLE) {\r\n      NGN.WARN(`The changelog for the ${this.name} field is empty because auditing is disabled.`)\r\n      return []\r\n    }\r\n\r\n    return this.METADATA.AUDITLOG.log\r\n  }",
+      "start": {
+        "line": 826,
+        "column": 2
+      },
+      "end": {
+        "line": 833,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": "Accepts an object with all configuration objects, or a string representing\r\n  the name of the field.",
+      "code": "constructor (cfg) {\r\n    cfg = cfg || {}\r\n\r\n    if (typeof cfg === 'string') {\r\n      cfg = {\r\n        name: cfg\r\n      }\r\n    }\r\n\r\n    // Validate field configuration values\r\n    if (cfg.hasOwnProperty('pattern') && NGN.typeof(cfg.pattern) !== 'regexp') {\r\n      throw new Error('Invalid data field configuration. Pattern must be a valid JavaScript regular expression (RegExp).')\r\n    }\r\n\r\n    if (cfg.type === undefined) {\r\n      if (cfg.default) {\r\n        cfg.type = NGN.getType(NGN.typeof(cfg.default), String)\r\n      }\r\n    }\r\n\r\n    super(cfg)\r\n\r\n    const EMPTYDATA = Symbol('empty')\r\n\r\n    Object.defineProperties(this, {\r\n      METADATA: NGN.privateconst({\r\n        /**\r\n         * @cfg {boolean} [required=false]\r\n         * Indicates the value is required.\r\n         */\r\n        required: NGN.coalesce(cfg.required, false),\r\n\r\n        /**\r\n         * @cfgproperty {boolean} [hidden=false]\r\n         * Indicates the field is hidden (metadata).\r\n         */\r\n        hidden: NGN.coalesce(cfg.hidden, false),\r\n\r\n        // Identifies the property as a standard data attribute.\r\n        // Alternative options include `data`, `key`, `join`, `virtual`.\r\n        fieldType: NGN.coalesce(cfg.identifier, false) ? 'key' : 'data',\r\n\r\n        isIdentifier: NGN.coalesce(cfg.identifier, false),\r\n\r\n        /**\r\n         * @cfg {boolean} [autocorrectInput=true]\r\n         * Attempt to automatically correct data type values. For example,\r\n         * a numeric field receiving a value of `'10'` will automatically\r\n         * convert the input to `10`. Only arrays, numbers, and booleans are\r\n         * supported. See NGN#forceArray, NGN#forceBoolean, and NGN#forceNumber\r\n         * for details.\r\n         */\r\n        autocorrectInput: NGN.coalesce(cfg.autocorrectInput, false),\r\n\r\n        /**\r\n         * @cfg {RegExp} [pattern]\r\n         * A pattern, as defined by a standard RegExp, that the data must match.\r\n         */\r\n        pattern: NGN.coalesceb(cfg.pattern),\r\n\r\n        /**\r\n         * @cfgproperty {string} name\r\n         * The field name.\r\n         */\r\n        name: NGN.coalesce(cfg.name),\r\n\r\n        /**\r\n         * @cfgproperty {string} description\r\n         * This is a metadata field, primarily used for documentation\r\n         * or schema generation purposes.\r\n         */\r\n        description: NGN.coalesce(cfg.description, `${NGN.typeof(cfg.type)} field`),\r\n\r\n        /**\r\n         * @cfgproperty {string} [sourceName]\r\n         * A source name represents the physical name of an attribute as it\r\n         * would be recognized in a system of record. For example, a field\r\n         * named `firstname` may need to be written to disk/memory as `gn`\r\n         * (commonly used as shorthand for givenName in LDAP environments\r\n         * and relational databases).\r\n         *\r\n         * By specifying `firstname` as the field name and `gn` as the source\r\n         * name, the field will automatically map values from the source\r\n         * to model name and vice versa.\r\n         *\r\n         * For instance, a JSON input may look like:\r\n         *\r\n         * ```js\r\n         * {\r\n         *   \"gn\": \"John\",\r\n         *   \"sn\": \"Doe\"\r\n         * }\r\n         * ```\r\n         *\r\n         * When this data is applied to the field (or loaded in a\r\n         * NGN.DATA.Model), the field #value for `firstname` would be `John`.\r\n         * If the field #value is changed to `Jill` (i.e.\r\n         * `firstname.value = 'Jill'`), the resulting data set would look like:\r\n         *\r\n         * ```js\r\n         * {\r\n         *   \"gn\": \"Jill\",\r\n         *   \"sn\": \"Doe\"\r\n         * }\r\n         * ```\r\n         */\r\n        sourceName: NGN.coalesce(cfg.sourceName),\r\n\r\n        /**\r\n         * @cfg {any} default\r\n         * The default value of the field when no value is specified.\r\n         */\r\n        default: NGN.coalesce(cfg.default),\r\n\r\n        lastValue: Symbol('no.value'),\r\n\r\n        /**\r\n         * @cfg {Primitive} [type=String]\r\n         * The JS primitive representing the type of data represented\r\n         * by the field.\r\n         */\r\n        dataType: NGN.coalesce(cfg.type, String),\r\n\r\n        /**\r\n         * @cfg {function} [rule[]]\r\n         * A function, or an array of functions, which determine whether the\r\n         * field value is valid or not. These functions receive a single argument\r\n         * (the data value) and must return a Boolean value.\r\n         */\r\n        rules: NGN.coalesce(cfg.rule, cfg.rules, cfg.validators, []),\r\n        violatedRule: null,\r\n\r\n        /**\r\n         * @cfg {boolean} [allowInvalid=true]\r\n         * If this is set to `false`, invalid values will throw an error.\r\n         */\r\n        allowInvalid: NGN.coalesce(cfg.allowInvalid, true),\r\n\r\n        /**\r\n         * @cfg {function} transformer\r\n         * A synchronous transformation function will be applied each time\r\n         * the field value is set. This can be used to modify data _before_ it\r\n         * is stored as a field value. The returned value from the function\r\n         * will be the new value of the field.\r\n         *\r\n         * The transformation function will receive the input as it's only\r\n         * aregument. For example:\r\n         *\r\n         * ```js\r\n         * let field = new NGN.DATA.Field({\r\n         *   name: 'testfield',\r\n         *   transformer: function (input) {\r\n         *     return input + '_test'\r\n         *   }\r\n         * })\r\n         *\r\n         * field.value = 'a'\r\n         *\r\n         * console.log(field.value) // Outputs \"a_test\"\r\n         * ```\r\n         *\r\n         * **Transformations can affect performance.** In small data sets,\r\n         * transformations are typically negligible, only adding a few\r\n         * milliseconds to processing time. This may affect large data sets,\r\n         * particularly data stores using defauly bulk recod loading.\r\n         */\r\n        TRANSFORM: NGN.coalesce(cfg.transformer),\r\n\r\n        RAWDATAPLACEHOLDER: EMPTYDATA,\r\n        RAW: EMPTYDATA,\r\n        ENUMERABLE_VALUES: null,\r\n        REVERSE_ENUMERABLE_VALUES: null,\r\n        IS_NEW: true,\r\n\r\n        EVENTS: new Set([\r\n          'hidden',\r\n          'unhidden',\r\n          'update',\r\n          'invalid',\r\n          'valid',\r\n          'rule.add',\r\n          'rule.remove'\r\n        ]),\r\n\r\n        /**\r\n         * @cfg {boolean} [audit=false]\r\n         * Enable auditing to support #undo/#redo operations. This creates and\r\n         * manages a NGN.DATA.TransactionLog.\r\n         */\r\n        AUDITABLE: NGN.coalesce(cfg.audit, false),\r\n\r\n        /**\r\n         * @cfg {Number} [auditMaxEntries=20]\r\n         * The maximum number of historical records to maintain for the field.\r\n         * See NGN.DATA.TransactionLog#constructor for details.\r\n         */\r\n        AUDITLOG: NGN.coalesce(cfg.audit, false)\r\n          ? new NGN.DATA.TransactionLog(NGN.coalesce(cfg.auditMaxEntries, 10))\r\n          : null,\r\n\r\n        /**\r\n         * @cfg {NGN.DATA.Model} [model]\r\n         * Optionally specify the parent model.\r\n         */\r\n        model: null,\r\n\r\n        // Set the value using a configuration.\r\n        setValue: (value, suppressEvents = false, ignoreAudit = false) => {\r\n          // Preprocessing (transform input)\r\n          if (this.METADATA.TRANSFORM !== null && NGN.isFn(this.METADATA.TRANSFORM)) {\r\n            value = this.METADATA.TRANSFORM.call(this, value)\r\n          }\r\n\r\n          // Attempt to auto-correct input when possible.\r\n          if (this.METADATA.autocorrectInput && this.type !== NGN.typeof(value)) {\r\n            value = this.autoCorrectValue(value)\r\n          }\r\n\r\n          // Ignore changes when the value hasn't been modified.\r\n          if (value === this.value) {\r\n            return\r\n          }\r\n\r\n          let change = {\r\n            field: this,\r\n            old: typeof this.METADATA.RAW === 'symbol' ? undefined : this.METADATA.RAW,\r\n            new: value\r\n          }\r\n\r\n          let priorValueIsValid = this.valid\r\n\r\n          this.METADATA.RAW = value\r\n\r\n          // Notify when an invalid value is detected.\r\n          if (!this.valid) {\r\n            // If invalid values are explicitly prohibited, throw an error.\r\n            // The value is rolled back before throwing the error so developers may\r\n            // catch the error and continue processing.\r\n            if (!this.METADATA.allowInvalid) {\r\n              this.METADATA.RAW = change.old\r\n              throw new Error(`\"${value}\" did not pass the ${this.METADATA.violatedRule} rule.`)\r\n            } else {\r\n              change.reason = `\"${value}\" did not pass the ${this.METADATA.violatedRule} rule.`\r\n              NGN.WARN(change.reason)\r\n            }\r\n\r\n            this.emit('invalid', change)\r\n          } else if (!suppressEvents && priorValueIsValid !== null && priorValueIsValid) {\r\n            // If the field BECAME valid (compared to prior value),\r\n            // emit an event.\r\n            this.emit('valid', change)\r\n          }\r\n\r\n          if (typeof this.METADATA.lastValue === 'symbol') {\r\n            this.METADATA.lastValue = value\r\n          }\r\n\r\n          // If auditing is enabled and not explicitly ignored by an internal\r\n          // operation, commit the change.\r\n          if (!ignoreAudit && !this.virtual && this.METADATA.AUDITABLE) {\r\n            change.cursor = this.METADATA.AUDITLOG.commit(this.METADATA.RAW)\r\n          }\r\n\r\n          // Notify when the update is complete.\r\n          if (!suppressEvents) {\r\n            this.emit('update', change)\r\n          }\r\n\r\n          // Mark unnecessary code for garbage collection.\r\n          priorValueIsValid = null\r\n          change = null\r\n        },\r\n\r\n        // Submit the payload to the parent model (if applicable).\r\n        commitPayload: (payload) => {\r\n          if (this.METADATA.model) {\r\n            payload.action = 'update'\r\n            payload.join = true\r\n\r\n            this.increaseMaxListeners(3)\r\n            this.METADATA.model.emit(\r\n              [\r\n                'update',\r\n                `${payload.field}.update`,\r\n                `update.${payload.field}`\r\n              ],\r\n              payload\r\n            )\r\n\r\n            payload = null // Mark for garbage collection\r\n          }\r\n        }\r\n      })\r\n    })\r\n\r\n    // Apply common rules\r\n    if (NGN.typeof(this.METADATA.rules) !== 'array') {\r\n      this.METADATA.rules = NGN.forceArray(this.METADATA.rules)\r\n    }\r\n\r\n    if (this.METADATA.rules.length > 0) {\r\n      for (let i = 0; i < this.METADATA.rules.length; i++) {\r\n        if (NGN.isFn(this.METADATA.rules[i]) && !(this.METADATA.rules[i] instanceof NGN.DATA.Rule)) {\r\n          this.METADATA.rules[i] = new NGN.DATA.Rule(this.METADATA.rules[i], `Custom Rule #${i + 1}`)\r\n        }\r\n      }\r\n    }\r\n\r\n    // Apply pattern validation if specified.\r\n    if (this.METADATA.dataType === String) {\r\n      if (this.METADATA.pattern !== null) {\r\n        this.METADATA.rules.unshift(new NGN.DATA.Rule(cfg.pattern, `Pattern Match (${cfg.pattern.toString()})`))\r\n      }\r\n\r\n      /**\r\n       * @cfg {Boolean} [nonempty]\r\n       * @info This validation attribute applies to #String fields only.\r\n       * Validates a value is not blank, `null`, or `undefined`.\r\n       */\r\n      if (cfg.nonempty) {\r\n        this.METADATA.rules.unshift(new NGN.DATA.Rule(value => {\r\n          return value.trim().length > 0\r\n        }, `No Blanks (${cfg.pattern.toString()})`))\r\n      }\r\n    }\r\n\r\n    /**\r\n     * @cfg {Number} [min]\r\n     * @info This validation attribute applies to #Array, #String, and #Number fields only.\r\n     * Specify a minimum value:\r\n     *\r\n     * - For string values, this is a minimum number of characters.\r\n     * - For numeric values, this is a minimum inclusive value (i.e. value must be greater than\r\n     * or equal to the minimum).\r\n     * - For arrays, this is a minimum number of items that must exist in the array.\r\n     */\r\n    /**\r\n     * @cfg {Number} [max]\r\n     * @info This validation attribute applies to #Array, #String, and #Number fields only.\r\n     * Specify a maximum value:\r\n     *\r\n     * - For string values, this is a maximum number of characters.\r\n     * - For numeric values, this is a maximum inclusive value (i.e. value must be less than\r\n     * or equal to the maximum).\r\n     * - For arrays, this is a maximum number of items that may exist in the array.\r\n     */\r\n\r\n    // Apply number-specific validations.\r\n    if (this.METADATA.dataType === Number || this.METADATA.dataType === Date || this.METADATA.dataType === String) {\r\n      // Support minimum/maximum range\r\n      if (NGN.objectHasAny(cfg, 'min', 'minimum', 'max', 'maximum')) {\r\n        cfg.range = NGN.forceArray(NGN.coalesce(cfg.range))\r\n        cfg.range.push([NGN.coalesce(cfg.min, cfg.minimum), NGN.coalesce(cfg.max, cfg.maximum)])\r\n      }\r\n\r\n      /**\r\n       * @cfg {Number} [range]\r\n       * @info This validation attribute applies to #String and #Number fields only.\r\n       * Specify a range of acceptable values:\r\n       *\r\n       * - For numbers, this implies inclusive ranges. For example, `1-10` means \"between 1 and 10, where both 1 and 10 are valid.\"\r\n       * - For strings, this implies inclusive ranges just like numbers, where the number is the character count.\r\n       */\r\n      if (cfg.hasOwnProperty('range')) {\r\n        this.METADATA.rules.unshift(new NGN.DATA.RangeRule('Numeric Range', cfg.range))\r\n      }\r\n\r\n      if (this.METADATA.dataType === Number) {\r\n        // Support numeric patterns (i.e. support for integers)\r\n        if (NGN.coalesce(cfg.pattern)) {\r\n          this.METADATA.rules.unshift(new NGN.DATA.Rule(value => {\r\n            return cfg.pattern.test(value.toString())\r\n          }, `Numeric Pattern (${cfg.pattern.toString().substr(0, 15) + (cfg.pattern.toString().length > 15 ? '...' : '')})`))\r\n        }\r\n\r\n        /**\r\n         * @cfg {Number} [multipleOf]\r\n         * @info This validation attribute applies to #Number fields only.\r\n         * Insures the field value is a multiple of this number. For example,\r\n         * if the multiple is `10` and the value is `100`, it is valid.\r\n         * If the multiple is `10` and the value is `101`, it is invalid.\r\n         */\r\n        if (NGN.typeof(cfg.multipleOf) === 'number') {\r\n          this.METADATA.rules.unshift(new NGN.DATA.Rule(value => {\r\n            return Math.abs(value % cfg.multipleOf) === 0\r\n          }, `Numeric Multiple of ${cfg.multipleOf}`))\r\n        }\r\n      }\r\n    }\r\n\r\n    // Apply array-specific native validations\r\n    if (this.METADATA.dataType === Array) {\r\n      // Enforce minimum number of array items\r\n      if (NGN.objectHasAny(cfg, 'min', 'minimum')) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => value.length >= NGN.coalesce(cfg.min, cfg.minimum), `${NGN.coalesce(cfg.min, cfg.minimum)} count minimum`))\r\n      }\r\n\r\n      // Enforce maximum number of array items\r\n      if (NGN.objectHasAny(cfg, 'max', 'maximum')) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => value.length <= NGN.coalesce(cfg.max, cfg.maximum), `${NGN.coalesce(cfg.max, cfg.maximum)} count maximum`))\r\n      }\r\n\r\n      /**\r\n       * @cfg {Array} [unique]\r\n       * @info This validation attribute applies to #Array fields only.\r\n       * @warning This is a computationally expensive validation when used in NGN Data Stores.\r\n       * Validates that all items are unique.\r\n       */\r\n      if (NGN.coalesce(cfg.unique, false)) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => NGN.dedupe(value).length === value.length, 'Unique value constraint'))\r\n      }\r\n\r\n      /**\r\n       * @cfg {any} [listType]\r\n       * @info This validation attribute applies to #Array fields only.\r\n       * Require each element of the array to conform to the specified data\r\n       * type. For example, setting `listType: Number` will validate that\r\n       * each element of the array is a number.\r\n       *\r\n       * ```js\r\n       * [1, 2, 3, 4, 5] // Valid\r\n       * [1, 2, 'three', 4, 5] // Invalid\r\n       * ```\r\n       */\r\n      if (cfg.hasOwnProperty('listType')) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => {\r\n          for (let i = 0; i < value.length; i++) {\r\n            if (NGN.typeof(value[i]) !== NGN.typeof(cfg.listType)) {\r\n              return false\r\n            }\r\n          }\r\n\r\n          return true\r\n        }, `${NGN.typeof(cfg.listType).toUpperCase()} list type constraint`))\r\n      }\r\n\r\n      // Support enumerations in array values\r\n      if (cfg.hasOwnProperty('enum')) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => {\r\n          return cfg.enum.indexOf(value) >= 0\r\n        }))\r\n      }\r\n\r\n      /**\r\n       * @cfg {Array} [tuples]\r\n       * @info This validation attribute applies to #Array fields only.\r\n       * @warning This is a computationally expensive validation when used in NGN Data Stores.\r\n       * Validate each item of an array according to a unique schema.\r\n       * Each item is a key value object, which supports only the `type` and\r\n       * `enum` validations.\r\n       *\r\n       * For example:\r\n       *\r\n       * ```js\r\n       * {\r\n       *   tuples: [{\r\n       *     type: Number\r\n       *   }, {\r\n       *     type: String,\r\n       *     enum: ['a', 'b', 'c']\r\n       *   }, {\r\n       *     enum: ['d', 1]\r\n       *   }]\r\n       * }\r\n       * ```\r\n       * The configuration above will make sure the first array item is a number,\r\n       * while the second is either `a`, `b`, or `c`, and the third is either\r\n       * the letter `d` or the number `1`. Only the first three items of the\r\n       * array will be checked, but there must be at least 3 items.\r\n       */\r\n      if (cfg.hasOwnProperty('tuples')) {\r\n        this.METADATA.rules.push(new NGN.DATA.Rule(value => {\r\n          if (value.length < cfg.tuples.length) {\r\n            return false\r\n          }\r\n\r\n          for (let i = 0; i < cfg.tuples.length; i++) {\r\n            if (cfg.tuples[i].hasOwnProperty('type')) {\r\n              if (NGN.typeof(value[i]) !== NGN.typeof(cfg.tuples[i].type)) {\r\n                return false\r\n              }\r\n            }\r\n\r\n            if (cfg.tuples[i].hasOwnProperty('enum')) {\r\n              if (cfg.tuples[i].enum.indexOf(value[i]) < 0) {\r\n                return false\r\n              }\r\n            }\r\n          }\r\n\r\n          return true\r\n        }, 'Tuple constraint'))\r\n      }\r\n    }\r\n\r\n    /**\r\n     * @cfg {Array} [enum]\r\n     * An enumeration of available values this field is allowed to have.\r\n     */\r\n    if (NGN.objectHasAny(cfg, 'enum', 'enumeration')) {\r\n      this.METADATA.ENUMERABLE_VALUES = new Set(NGN.forceArray(NGN.coalesce(cfg.enum, cfg.enumeration)))\r\n      this.METADATA.rules.push(new NGN.DATA.Rule((value) => this.METADATA.ENUMERABLE_VALUES.has(value), 'Enumerable Values'))\r\n    }\r\n\r\n    /**\r\n     * @cfg {Array} [not]\r\n     * A \"reverse\" enumeration, i.e. a list of values this field is **not** allowed to be.\r\n     */\r\n    if (NGN.objectHasAny(cfg, 'not', 'notin')) {\r\n      this.METADATA.REVERSE_ENUMERABLE_VALUES = new Set(NGN.forceArray(NGN.coalesce(cfg.not, cfg.notin)))\r\n      this.METADATA.rules.push(new NGN.DATA.Rule((value) => !this.METADATA.REVERSE_ENUMERABLE_VALUES.has(value), 'Rejected Values'))\r\n    }\r\n\r\n    // Check if the field type is an array, which indicates multiple\r\n    // data types are considered valid.\r\n    if (cfg.type instanceof Array) {\r\n      // If the array has no values, assume the user meant to create an \"Array\" data type.\r\n      // Warn them, in case this was not the intention.\r\n      if (cfg.type.length === 0) {\r\n        NGN.WARN(`No data type specified for ${this.name} field. Autoconverted to an array.`)\r\n        cfg.type = Array\r\n      } else if (cfg.type.length === 1) {\r\n        // If there is only one data type, the array is extraneous and standard\r\n        // datatype validation can be used.\r\n        cfg.type = cfg.type[0]\r\n      }\r\n    }\r\n\r\n    /**\r\n     * @cfg {Primitive|Array} [type=String]\r\n     * The type should be a JavaScript primitive, class, or constructor.\r\n     * For example, `String`, `Number`, `Boolean`, `RegExp`, `Array`, or `Date`.\r\n     * This can also be an array of primitive values. For example, `[String, Number]`\r\n     * indicates the field could be a string or a numeric value.\r\n     */\r\n    if (cfg.type instanceof Array) {\r\n      let typeList = cfg.type.map(type => NGN.typeof(type))\r\n\r\n      this.METADATA.rules.unshift(\r\n        new NGN.DATA.Rule(\r\n          (value) => typeList.indexOf(NGN.typeof(value)) >= 0,\r\n          `${this.type.toUpperCase()} Multitype Check`\r\n        )\r\n      )\r\n    } else {\r\n      this.METADATA.rules.unshift(\r\n        new NGN.DATA.Rule(\r\n          (value) => NGN.typeof(value) === NGN.typeof(this.METADATA.dataType),\r\n          `${this.type.toUpperCase()} Type Check`\r\n        )\r\n      )\r\n    }\r\n\r\n    // Associate a model if one is defined.\r\n    if (NGN.coalesce(cfg.model) !== null) {\r\n      this.model = cfg.model\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 40,
+        "column": 2
+      },
+      "end": {
+        "line": 597,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "cfg": {
+          "type": "argument",
+          "label": "configuration",
+          "description": "Accepts an object with all configuration objects, or a string representing\nthe name of the field.",
+          "code": "cfg",
+          "start": {
+            "line": 40,
+            "column": 15
+          },
+          "end": {
+            "line": 40,
+            "column": 18
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": null
+        },
+        "configuration": {
+          "type": "argument",
+          "label": "configuration",
+          "description": "Accepts an object with all configuration objects, or a string representing\nthe name of the field.",
+          "code": "cfg",
+          "start": {
+            "line": 40,
+            "column": 15
+          },
+          "end": {
+            "line": 40,
+            "column": 18
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string|object",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "undo": {
+      "type": "method",
+      "label": "undo",
+      "description": "A rollback function to undo changes. This operation affects\nthe changelog . To \"undo\" an \"undo\", use #redo.",
+      "code": "undo (count = 1, suppressEvents = false) {\r\n    if (!this.METADATA.AUDITABLE) {\r\n      NGN.WARN(`The undo operation failed on the ${this.name} field because auditing is disabled.`)\r\n      return\r\n    }\r\n\r\n    let id = this.METADATA.AUDITLOG.rollback(count)\r\n\r\n    // Silently set the value to an older value.\r\n    this.METADATA.setValue(this.METADATA.AUDITLOG.getCommit(id).value, suppressEvents, true)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 845,
+        "column": 2
+      },
+      "end": {
+        "line": 855,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "count": {
+          "type": "argument",
+          "label": "OperationCount",
+          "description": "The number of operations to \"undo\". Defaults to a single operation.",
+          "code": "count = 1",
+          "start": {
+            "line": 845,
+            "column": 8
+          },
+          "end": {
+            "line": 845,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": "1",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        },
+        "suppressEvents": {
+          "type": "argument",
+          "label": "suppressEvents",
+          "description": "Set to `true` to quietly update the value (prevents `update` event from\nfiring).",
+          "code": "suppressEvents = false",
+          "start": {
+            "line": 845,
+            "column": 19
+          },
+          "end": {
+            "line": 845,
+            "column": 41
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "OperationCount": {
+          "type": "argument",
+          "label": "OperationCount",
+          "description": "The number of operations to \"undo\". Defaults to a single operation.",
+          "code": "count = 1",
+          "start": {
+            "line": 845,
+            "column": 8
+          },
+          "end": {
+            "line": 845,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": "1",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "redo": {
+      "type": "method",
+      "label": "redo",
+      "description": "A function to reapply known changes. This operation affects\nthe changelog .\n\nThe redo operation only works after an undo operation, but before a new\nvalue is committed to the transaction log. In other words, `undo -> redo`\nwill work, but `undo -> update -> redo` will not. For details, see how\nthe NGN.DATA.TransactionLog cursor system works.",
+      "code": "redo (count = 1, suppressEvents = false) {\r\n    if (!this.METADATA.AUDITABLE) {\r\n      NGN.WARN(`The redo operation failed on the ${this.name} field because auditing is disabled.`)\r\n      return\r\n    }\r\n\r\n    let id = this.METADATA.AUDITLOG.advance(count)\r\n\r\n    // Silently set the value to a newer value.\r\n    this.METADATA.setValue(this.METADATA.AUDITLOG.getCommit(id).value, suppressEvents, true)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 872,
+        "column": 2
+      },
+      "end": {
+        "line": 882,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "count": {
+          "type": "argument",
+          "label": "OperationCount",
+          "description": "The number of operations to \"undo\". Defaults to a single operation.",
+          "code": "count = 1",
+          "start": {
+            "line": 872,
+            "column": 8
+          },
+          "end": {
+            "line": 872,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": "1",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        },
+        "suppressEvents": {
+          "type": "argument",
+          "label": "suppressEvents",
+          "description": "Set to `true` to quietly update the value (prevents `update` event from\nfiring).",
+          "code": "suppressEvents = false",
+          "start": {
+            "line": 872,
+            "column": 19
+          },
+          "end": {
+            "line": 872,
+            "column": 41
+          },
+          "flags": [],
+          "authors": [],
+          "default": "false",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "OperationCount": {
+          "type": "argument",
+          "label": "OperationCount",
+          "description": "The number of operations to \"undo\". Defaults to a single operation.",
+          "code": "count = 1",
+          "start": {
+            "line": 872,
+            "column": 8
+          },
+          "end": {
+            "line": 872,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": "1",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "hide": {
+      "type": "method",
+      "label": "hide",
+      "description": "Hide the field.",
+      "code": "hide () {\r\n    this.hidden = true\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 887,
+        "column": 2
+      },
+      "end": {
+        "line": 889,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "unhide": {
+      "type": "method",
+      "label": "unhide",
+      "description": "Unhide the field.",
+      "code": "unhide () {\r\n    this.hidden = false\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 894,
+        "column": 2
+      },
+      "end": {
+        "line": 896,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "allowInvalid": {
+      "type": "method",
+      "label": "allowInvalid",
+      "description": "Do not throw errors whan a value is marked as invalid.",
+      "code": "allowInvalid () {\r\n    this.METADATA.allowInvalid = true\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 901,
+        "column": 2
+      },
+      "end": {
+        "line": 903,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "disallowInvalid": {
+      "type": "method",
+      "label": "disallowInvalid",
+      "description": "Throw errors whan a value is marked as invalid.",
+      "code": "disallowInvalid () {\r\n    this.METADATA.allowInvalid = false\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 908,
+        "column": 2
+      },
+      "end": {
+        "line": 910,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "autoCorrectValue": {
+      "type": "method",
+      "label": "autoCorrectValue",
+      "description": "Attempt to automatically correct a value according to the\r\n  field's data type.\r\n  \r\n  The value to attempt to autocorrect.\r\n  \r\n  Returns the value after attempting to autocorrect the value.",
+      "code": "autoCorrectValue (value) {\r\n    try {\r\n      switch (this.type) {\r\n        case 'number':\r\n          value = NGN.forceNumber(value)\r\n          break\r\n\r\n        case 'boolean':\r\n          value = NGN.forceBoolean(value)\r\n          break\r\n\r\n        case 'array':\r\n          value = NGN.forceArray(value)\r\n          break\r\n\r\n        case 'string':\r\n          value = value.toString()\r\n          break\r\n\r\n        case 'date':\r\n          let valueType = NGN.typeof(value)\r\n\r\n          if (valueType !== 'date') {\r\n            if (valueType === 'number') {\r\n              let dt = new Date()\r\n              dt.setTime(value)\r\n\r\n              value = dt\r\n            } else {\r\n              value = new Date(Date.parse(value))\r\n            }\r\n          }\r\n\r\n          break\r\n      }\r\n    } finally {\r\n      return value // eslint-disable-line no-unsafe-finally\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 920,
+        "column": 2
+      },
+      "end": {
+        "line": 958,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "The value to attempt to autocorrect.",
+          "code": "value",
+          "start": {
+            "line": 920,
+            "column": 20
+          },
+          "end": {
+            "line": 920,
+            "column": 25
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "Any",
+      "returnDescription": "null Returns the value after attempting to autocorrect the value.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

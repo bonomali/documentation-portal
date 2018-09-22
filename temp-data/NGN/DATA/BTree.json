@@ -1,0 +1,817 @@
+{
+  "type": "class",
+  "label": "NGN.DATA.BTree",
+  "description": "Compare two numbers\r\n       \r\n       \r\n       \r\n       - Returns `-1` if first number is less than second.\r\n       - Returns `0` if numbers are equal.\r\n       - Returns `1` if first number is greater than second.",
+  "code": "class Tree extends EventEmitter {\r\n  constructor (order = 52) {\r\n    super()\r\n\r\n    // Sanitize input\r\n    order = order < 1 ? 1 : order\r\n\r\n    Object.defineProperties(this, {\r\n      root: NGN.private(new TreeNode(this)),\r\n\r\n      BTREE: NGN.private({}),\r\n\r\n      METADATA: NGN.private({\r\n        order: order,\r\n\r\n        minOrder: order > 1 ? Math.floor(order / 2) : 1,\r\n\r\n        compare: (firstNumber, secondNumber) => {\r\n          return firstNumber < secondNumber ? -1 : (firstNumber > secondNumber ? 1 : 0)\r\n        }\r\n      })\r\n    })\r\n\r\n    this.root.METADATA.minOrder = this.METADATA.minOrder\r\n    this.root.METADATA.order = this.METADATA.order\r\n  }\r\n\r\n  /**\r\n   * Validates a node and prints debugging info if something went wrong.\r\n   * @param {!TreeNode|!Tree} node\r\n   * @private\r\n   */\r\n  validate (node) {\r\n    if (node instanceof Tree) {\r\n      return\r\n    }\r\n\r\n    if (node.leafs.length + 1 !== node.nodes.length) {\r\n      NGN.ERROR(`Illegal leaf/node count in ${node}: ${node.leafs.length}/${node.nodes.length}`)\r\n    }\r\n\r\n    let i\r\n\r\n    for (i = 0; i < node.leafs.length; i++) {\r\n      if (!node.leafs[i]) {\r\n        NGN.ERROR(`Illegal leaf in ${node} at ${i}: ${node.leafs[i]}`)\r\n      }\r\n    }\r\n\r\n    for (i = 0; i < node.nodes.length; i++) {\r\n      if (NGN.typeof(node.nodes[i]) === 'undefined') {\r\n        NGN.ERROR(`Illegal node in ${node} at ${i}: undefined`)\r\n      }\r\n    }\r\n  }\r\n\r\n  /**\r\n   * Insert a key/value pair into the tree.\r\n   * @param {number} key\r\n   * @param {any} value\r\n   * @param {boolean} [overwrite=true]\r\n   * Overwrite existing values\r\n   */\r\n  put (key, value, overwrite = true) {\r\n    if (NGN.typeof(key) !== 'number') {\r\n      throw new Error(`Illegal key: ${key}`)\r\n    }\r\n\r\n    if (value === undefined) {\r\n      throw new Error(`Illegal value: ${value}`)\r\n    }\r\n\r\n    return this.root.put(key, value, overwrite)\r\n  }\r\n\r\n  /**\r\n   * Retrieve the value for the specified key.\r\n   * @param {number} key\r\n   * @returns {any}\r\n   * If there is no such key, `undefined` is returned.\r\n   */\r\n  get (key) {\r\n    if (NGN.typeof(key) !== 'number') {\r\n      throw new Error(`Illegal key: ${key}`)\r\n    }\r\n\r\n    return this.root.get(key)\r\n  }\r\n\r\n  /**\r\n   * Delete a key from the tree.\r\n   * @param {number} key\r\n   */\r\n  delete (key) {\r\n    if (NGN.typeof(key) !== 'number') {\r\n      throw new Error(`Illegal key: ${key}`)\r\n    }\r\n\r\n    return this.root.delete(key)\r\n  }\r\n\r\n  /**\r\n   * Walk through all keys in ascending order.\r\n   * @param {number} minKey\r\n   * If omitted or NULL, starts at the beginning\r\n   * @param {number} maxKey\r\n   * If omitted or NULL, walks till the end\r\n   * @param {function} callback\r\n   * @param {number} callback.key\r\n   * The key\r\n   * @param {any} callback.value\r\n   * The value.\r\n   */\r\n  walk (minKey, maxKey, callback) {\r\n    if (this.root.leafs.length === 0) {\r\n      return\r\n    }\r\n\r\n    if (NGN.isFn(minKey)) {\r\n      callback = minKey\r\n      minKey = maxKey = null\r\n    } else if (NGN.isFn(maxKey)) {\r\n      callback = maxKey\r\n      maxKey = null\r\n    }\r\n\r\n    minKey = NGN.coalesce(minKey)\r\n    maxKey = NGN.coalesce(maxKey)\r\n\r\n    let ptr\r\n    let index\r\n\r\n    if (minKey === null) {\r\n      // No minimum limit\r\n      ptr = this.root\r\n\r\n      while (ptr.nodes[0] !== null) {\r\n        ptr = ptr.nodes[0]\r\n      }\r\n\r\n      index = 0\r\n    } else {\r\n      // lookup\r\n      let result = this.root.search(minKey)\r\n\r\n      if (result.leaf) {\r\n        // Minimum key itself exists\r\n        ptr = result.leaf.parent\r\n        index = ptr.leafs.indexOf(result.leaf)\r\n      } else {\r\n        // Key does not exist\r\n        ptr = result.node\r\n        index = result.index\r\n\r\n        if (index >= ptr.leafs.length) {\r\n          // begin at parent separator in overrun\r\n          if (ptr.parent instanceof Tree || ptr.parent.nodes.indexOf(ptr) >= ptr.parent.leafs.length) {\r\n            return\r\n          }\r\n\r\n          ptr = ptr.parent\r\n        }\r\n      }\r\n    }\r\n\r\n    // ptr/index points to first result\r\n    while (true) {\r\n      if (maxKey !== null && this.METADATA.compare(ptr.leafs[index].key, maxKey) > 0) {\r\n        break\r\n      }\r\n      if (ptr.leafs.length === 0) {\r\n        break\r\n      }\r\n\r\n      if (callback(ptr.leafs[index].key, ptr.leafs[index].value)) {\r\n        break\r\n      }\r\n\r\n      if (ptr.nodes[index + 1] !== null) {\r\n        // Descend Tree\r\n        ptr = ptr.nodes[index + 1]\r\n        index = 0\r\n\r\n        while (ptr.nodes[0] !== null) {\r\n          ptr = ptr.nodes[0]\r\n        }\r\n      } else if (ptr.leafs.length > index + 1) {\r\n        // Next\r\n        index++\r\n      } else {\r\n        // Ascend Tree\r\n        do {\r\n          if ((ptr.parent instanceof Tree)) {\r\n            return\r\n          }\r\n\r\n          index = ptr.parent.nodes.indexOf(ptr)\r\n          ptr = ptr.parent\r\n        } while (index >= ptr.leafs.length)\r\n      }\r\n    }\r\n  }\r\n\r\n  /**\r\n   * Walks through all keys in descending order.\r\n   * @param {number} minKey\r\n   * If omitted or NULL, starts at the beginning\r\n   * @param {number} maxKey\r\n   * If omitted or NULL, walks till the end\r\n   * @param {function} callback\r\n   * @param {number} callback.key\r\n   * The key\r\n   * @param {any} callback.value\r\n   * The value.\r\n   */\r\n  walkDesc (minKey, maxKey, callback) {\r\n    if (NGN.isFn(minKey)) {\r\n      callback = minKey\r\n      minKey = maxKey = null\r\n    } else if (NGN.isFn(maxKey)) {\r\n      callback = maxKey\r\n      maxKey = null\r\n    }\r\n\r\n    minKey = NGN.coalesce(minKey)\r\n    maxKey = NGN.coalesce(maxKey)\r\n\r\n    let ptr\r\n    let index\r\n    if (maxKey === null) {\r\n      // No maximum\r\n      ptr = this.root\r\n\r\n      while (ptr.nodes[ptr.nodes.length - 1] !== null) {\r\n        ptr = ptr.nodes[ptr.nodes.length - 1]\r\n      }\r\n\r\n      index = ptr.leafs.length - 1\r\n    } else {\r\n      // Lookup\r\n      let result = this.root.search(maxKey)\r\n\r\n      if (result.leaf) {\r\n        // Maximum key exists\r\n        ptr = result.leaf.parent\r\n        index = ptr.leafs.indexOf(result.leaf)\r\n      } else {\r\n        // Key does not exist\r\n        ptr = result.node\r\n        index = result.index - 1\r\n\r\n        while (index < 0) {\r\n          // Begin at parent separator on underrun\r\n          if (ptr.parent instanceof Tree) {\r\n            return\r\n          }\r\n\r\n          index = ptr.parent.nodes.indexOf(ptr) - 1\r\n\r\n          if (index < 0) {\r\n            return\r\n          }\r\n\r\n          ptr = ptr.parent\r\n        }\r\n      }\r\n    }\r\n\r\n    // ptr/index points to first result\r\n    while (true) {\r\n      if (minKey !== null && this.METADATA.compare(ptr.leafs[index].key, minKey) < 0) {\r\n        break\r\n      }\r\n\r\n      if (callback(ptr.leafs[index].key, ptr.leafs[index].value)) {\r\n        break\r\n      }\r\n\r\n      if (ptr.nodes[index] !== null) {\r\n        // Descend Tree\r\n        ptr = ptr.nodes[index]\r\n\r\n        while (ptr.nodes[ptr.nodes.length - 1] !== null) {\r\n          ptr = ptr.nodes[ptr.nodes.length - 1]\r\n        }\r\n\r\n        index = ptr.leafs.length - 1\r\n      } else if (index > 0) {\r\n        // Next\r\n        index--\r\n      } else {\r\n        // Ascend Tree\r\n        do {\r\n          if ((ptr.parent instanceof Tree)) {\r\n            return\r\n          }\r\n\r\n          index = ptr.parent.nodes.indexOf(ptr) - 1\r\n\r\n          ptr = ptr.parent\r\n        } while (index < 0)\r\n      }\r\n    }\r\n  }\r\n\r\n  /**\r\n   * The number of keys between minKey and maxKey (both inclusive).\r\n   * @param {number} minKey\r\n   * If omitted, counts from the start\r\n   * @param {number} maxKey\r\n   * If omitted, counts till the end\r\n   * @returns {number}\r\n   */\r\n  count (minKey, maxKey) {\r\n    let n = 0\r\n\r\n    this.walk(\r\n      minKey !== undefined ? minKey : null,\r\n      maxKey !== undefined ? maxKey : null,\r\n      (key, value) => { n++ }\r\n    )\r\n\r\n    return n\r\n  };\r\n\r\n  /**\r\n   * A string representation of the tree.\r\n   * @returns {string}\r\n   */\r\n  toString () {\r\n    return `Tree(${this.METADATA.order}) ${this.root.toString()}`\r\n  }\r\n\r\n  get length () {\r\n    return this.count()\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 415,
+    "column": 15
+  },
+  "end": {
+    "line": 751,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/index/BTree.js",
+  "extends": "EventEmitter",
+  "configuration": {},
+  "properties": {
+    "root": {
+      "type": "property",
+      "label": "root",
+      "description": null,
+      "code": "root: NGN.private(new TreeNode(this))",
+      "start": {
+        "line": 423,
+        "column": 6
+      },
+      "end": {
+        "line": 423,
+        "column": 43
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "BTREE": {
+      "type": "property",
+      "label": "BTREE",
+      "description": null,
+      "code": "BTREE: NGN.private({})",
+      "start": {
+        "line": 425,
+        "column": 6
+      },
+      "end": {
+        "line": 425,
+        "column": 28
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "METADATA": {
+      "type": "property",
+      "label": "METADATA",
+      "description": null,
+      "code": "METADATA: NGN.private({\r\n        order: order,\r\n\r\n        minOrder: order > 1 ? Math.floor(order / 2) : 1,\r\n\r\n        compare: (firstNumber, secondNumber) => {\r\n          return firstNumber < secondNumber ? -1 : (firstNumber > secondNumber ? 1 : 0)\r\n        }\r\n      })",
+      "start": {
+        "line": 427,
+        "column": 6
+      },
+      "end": {
+        "line": 435,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "minOrder": {
+      "type": "property",
+      "label": "minOrder",
+      "description": null,
+      "code": "this.root.METADATA.minOrder = this.METADATA.minOrder",
+      "start": {
+        "line": 438,
+        "column": 23
+      },
+      "end": {
+        "line": 438,
+        "column": 31
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "order": {
+      "type": "property",
+      "label": "order",
+      "description": null,
+      "code": "this.root.METADATA.order = this.METADATA.order",
+      "start": {
+        "line": 439,
+        "column": 23
+      },
+      "end": {
+        "line": 439,
+        "column": 28
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "length": {
+      "type": "property",
+      "label": "length",
+      "description": null,
+      "code": "get length () {\r\n    return this.count()\r\n  }",
+      "start": {
+        "line": 748,
+        "column": 2
+      },
+      "end": {
+        "line": 750,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor (order = 52) {\r\n    super()\r\n\r\n    // Sanitize input\r\n    order = order < 1 ? 1 : order\r\n\r\n    Object.defineProperties(this, {\r\n      root: NGN.private(new TreeNode(this)),\r\n\r\n      BTREE: NGN.private({}),\r\n\r\n      METADATA: NGN.private({\r\n        order: order,\r\n\r\n        minOrder: order > 1 ? Math.floor(order / 2) : 1,\r\n\r\n        compare: (firstNumber, secondNumber) => {\r\n          return firstNumber < secondNumber ? -1 : (firstNumber > secondNumber ? 1 : 0)\r\n        }\r\n      })\r\n    })\r\n\r\n    this.root.METADATA.minOrder = this.METADATA.minOrder\r\n    this.root.METADATA.order = this.METADATA.order\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 416,
+        "column": 2
+      },
+      "end": {
+        "line": 440,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "order": {
+          "type": "argument",
+          "label": "order",
+          "description": null,
+          "code": "order = 52",
+          "start": {
+            "line": 416,
+            "column": 15
+          },
+          "end": {
+            "line": 416,
+            "column": 25
+          },
+          "flags": [],
+          "authors": [],
+          "default": 52,
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "validate": {
+      "type": "method",
+      "label": "validate",
+      "description": "Validates a node and prints debugging info if something went wrong.",
+      "code": "validate (node) {\r\n    if (node instanceof Tree) {\r\n      return\r\n    }\r\n\r\n    if (node.leafs.length + 1 !== node.nodes.length) {\r\n      NGN.ERROR(`Illegal leaf/node count in ${node}: ${node.leafs.length}/${node.nodes.length}`)\r\n    }\r\n\r\n    let i\r\n\r\n    for (i = 0; i < node.leafs.length; i++) {\r\n      if (!node.leafs[i]) {\r\n        NGN.ERROR(`Illegal leaf in ${node} at ${i}: ${node.leafs[i]}`)\r\n      }\r\n    }\r\n\r\n    for (i = 0; i < node.nodes.length; i++) {\r\n      if (NGN.typeof(node.nodes[i]) === 'undefined') {\r\n        NGN.ERROR(`Illegal node in ${node} at ${i}: undefined`)\r\n      }\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 447,
+        "column": 2
+      },
+      "end": {
+        "line": 469,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "node": {
+          "type": "argument",
+          "label": "node",
+          "description": "",
+          "code": "node",
+          "start": {
+            "line": 447,
+            "column": 12
+          },
+          "end": {
+            "line": 447,
+            "column": 16
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "!treenode|!tree",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "put": {
+      "type": "method",
+      "label": "put",
+      "description": "Insert a key/value pair into the tree.\r\n  \r\n  \r\n  \r\n  Overwrite existing values",
+      "code": "put (key, value, overwrite = true) {\r\n    if (NGN.typeof(key) !== 'number') {\r\n      throw new Error(`Illegal key: ${key}`)\r\n    }\r\n\r\n    if (value === undefined) {\r\n      throw new Error(`Illegal value: ${value}`)\r\n    }\r\n\r\n    return this.root.put(key, value, overwrite)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 478,
+        "column": 2
+      },
+      "end": {
+        "line": 488,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": "",
+          "code": "key",
+          "start": {
+            "line": 478,
+            "column": 7
+          },
+          "end": {
+            "line": 478,
+            "column": 10
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        },
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "",
+          "code": "value",
+          "start": {
+            "line": 478,
+            "column": 12
+          },
+          "end": {
+            "line": 478,
+            "column": 17
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "overwrite": {
+          "type": "argument",
+          "label": "overwrite",
+          "description": "Overwrite existing values",
+          "code": "overwrite = true",
+          "start": {
+            "line": 478,
+            "column": 19
+          },
+          "end": {
+            "line": 478,
+            "column": 35
+          },
+          "flags": [],
+          "authors": [],
+          "default": "true",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "get": {
+      "type": "method",
+      "label": "get",
+      "description": "Retrieve the value for the specified key.\r\n  \r\n  \r\n  If there is no such key, `undefined` is returned.",
+      "code": "get (key) {\r\n    if (NGN.typeof(key) !== 'number') {\r\n      throw new Error(`Illegal key: ${key}`)\r\n    }\r\n\r\n    return this.root.get(key)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 496,
+        "column": 2
+      },
+      "end": {
+        "line": 502,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": "",
+          "code": "key",
+          "start": {
+            "line": 496,
+            "column": 7
+          },
+          "end": {
+            "line": 496,
+            "column": 10
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "any",
+      "returnDescription": "null If there is no such key, `undefined` is returned.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "delete": {
+      "type": "method",
+      "label": "delete",
+      "description": "Delete a key from the tree.",
+      "code": "delete (key) {\r\n    if (NGN.typeof(key) !== 'number') {\r\n      throw new Error(`Illegal key: ${key}`)\r\n    }\r\n\r\n    return this.root.delete(key)\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 508,
+        "column": 2
+      },
+      "end": {
+        "line": 514,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": "",
+          "code": "key",
+          "start": {
+            "line": 508,
+            "column": 10
+          },
+          "end": {
+            "line": 508,
+            "column": 13
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "walk": {
+      "type": "method",
+      "label": "walk",
+      "description": "Walk through all keys in ascending order.\r\n  \r\n  If omitted or NULL, starts at the beginning\r\n  \r\n  If omitted or NULL, walks till the end\r\n  \r\n  \r\n  The key\r\n  \r\n  The value.",
+      "code": "walk (minKey, maxKey, callback) {\r\n    if (this.root.leafs.length === 0) {\r\n      return\r\n    }\r\n\r\n    if (NGN.isFn(minKey)) {\r\n      callback = minKey\r\n      minKey = maxKey = null\r\n    } else if (NGN.isFn(maxKey)) {\r\n      callback = maxKey\r\n      maxKey = null\r\n    }\r\n\r\n    minKey = NGN.coalesce(minKey)\r\n    maxKey = NGN.coalesce(maxKey)\r\n\r\n    let ptr\r\n    let index\r\n\r\n    if (minKey === null) {\r\n      // No minimum limit\r\n      ptr = this.root\r\n\r\n      while (ptr.nodes[0] !== null) {\r\n        ptr = ptr.nodes[0]\r\n      }\r\n\r\n      index = 0\r\n    } else {\r\n      // lookup\r\n      let result = this.root.search(minKey)\r\n\r\n      if (result.leaf) {\r\n        // Minimum key itself exists\r\n        ptr = result.leaf.parent\r\n        index = ptr.leafs.indexOf(result.leaf)\r\n      } else {\r\n        // Key does not exist\r\n        ptr = result.node\r\n        index = result.index\r\n\r\n        if (index >= ptr.leafs.length) {\r\n          // begin at parent separator in overrun\r\n          if (ptr.parent instanceof Tree || ptr.parent.nodes.indexOf(ptr) >= ptr.parent.leafs.length) {\r\n            return\r\n          }\r\n\r\n          ptr = ptr.parent\r\n        }\r\n      }\r\n    }\r\n\r\n    // ptr/index points to first result\r\n    while (true) {\r\n      if (maxKey !== null && this.METADATA.compare(ptr.leafs[index].key, maxKey) > 0) {\r\n        break\r\n      }\r\n      if (ptr.leafs.length === 0) {\r\n        break\r\n      }\r\n\r\n      if (callback(ptr.leafs[index].key, ptr.leafs[index].value)) {\r\n        break\r\n      }\r\n\r\n      if (ptr.nodes[index + 1] !== null) {\r\n        // Descend Tree\r\n        ptr = ptr.nodes[index + 1]\r\n        index = 0\r\n\r\n        while (ptr.nodes[0] !== null) {\r\n          ptr = ptr.nodes[0]\r\n        }\r\n      } else if (ptr.leafs.length > index + 1) {\r\n        // Next\r\n        index++\r\n      } else {\r\n        // Ascend Tree\r\n        do {\r\n          if ((ptr.parent instanceof Tree)) {\r\n            return\r\n          }\r\n\r\n          index = ptr.parent.nodes.indexOf(ptr)\r\n          ptr = ptr.parent\r\n        } while (index >= ptr.leafs.length)\r\n      }\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 528,
+        "column": 2
+      },
+      "end": {
+        "line": 616,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "minKey": {
+          "type": "argument",
+          "label": "minKey",
+          "description": "If omitted or NULL, starts at the beginning",
+          "code": "minKey",
+          "start": {
+            "line": 528,
+            "column": 8
+          },
+          "end": {
+            "line": 528,
+            "column": 14
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        },
+        "maxKey": {
+          "type": "argument",
+          "label": "maxKey",
+          "description": "If omitted or NULL, walks till the end",
+          "code": "maxKey",
+          "start": {
+            "line": 528,
+            "column": 16
+          },
+          "end": {
+            "line": 528,
+            "column": 22
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "",
+          "code": "@param {function} callback",
+          "start": {
+            "line": 528,
+            "column": 2
+          },
+          "end": {
+            "line": 616,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {
+            "key": {
+              "type": "argument",
+              "label": "key",
+              "description": "The key",
+              "code": "@param {number} callback.key\nThe key",
+              "start": {
+                "line": 528,
+                "column": 24
+              },
+              "end": {
+                "line": 528,
+                "column": 32
+              },
+              "flags": [],
+              "authors": [],
+              "default": null,
+              "datatype": "number",
+              "required": true,
+              "enum": null
+            },
+            "value": {
+              "type": "argument",
+              "label": "value",
+              "description": "The value.",
+              "code": "@param {any} callback.value\nThe value.",
+              "start": {
+                "line": 528,
+                "column": 24
+              },
+              "end": {
+                "line": 528,
+                "column": 32
+              },
+              "flags": [],
+              "authors": [],
+              "default": null,
+              "datatype": "any",
+              "required": true,
+              "enum": null
+            }
+          },
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "walkDesc": {
+      "type": "method",
+      "label": "walkDesc",
+      "description": "Walks through all keys in descending order.\r\n  \r\n  If omitted or NULL, starts at the beginning\r\n  \r\n  If omitted or NULL, walks till the end\r\n  \r\n  \r\n  The key\r\n  \r\n  The value.",
+      "code": "walkDesc (minKey, maxKey, callback) {\r\n    if (NGN.isFn(minKey)) {\r\n      callback = minKey\r\n      minKey = maxKey = null\r\n    } else if (NGN.isFn(maxKey)) {\r\n      callback = maxKey\r\n      maxKey = null\r\n    }\r\n\r\n    minKey = NGN.coalesce(minKey)\r\n    maxKey = NGN.coalesce(maxKey)\r\n\r\n    let ptr\r\n    let index\r\n    if (maxKey === null) {\r\n      // No maximum\r\n      ptr = this.root\r\n\r\n      while (ptr.nodes[ptr.nodes.length - 1] !== null) {\r\n        ptr = ptr.nodes[ptr.nodes.length - 1]\r\n      }\r\n\r\n      index = ptr.leafs.length - 1\r\n    } else {\r\n      // Lookup\r\n      let result = this.root.search(maxKey)\r\n\r\n      if (result.leaf) {\r\n        // Maximum key exists\r\n        ptr = result.leaf.parent\r\n        index = ptr.leafs.indexOf(result.leaf)\r\n      } else {\r\n        // Key does not exist\r\n        ptr = result.node\r\n        index = result.index - 1\r\n\r\n        while (index < 0) {\r\n          // Begin at parent separator on underrun\r\n          if (ptr.parent instanceof Tree) {\r\n            return\r\n          }\r\n\r\n          index = ptr.parent.nodes.indexOf(ptr) - 1\r\n\r\n          if (index < 0) {\r\n            return\r\n          }\r\n\r\n          ptr = ptr.parent\r\n        }\r\n      }\r\n    }\r\n\r\n    // ptr/index points to first result\r\n    while (true) {\r\n      if (minKey !== null && this.METADATA.compare(ptr.leafs[index].key, minKey) < 0) {\r\n        break\r\n      }\r\n\r\n      if (callback(ptr.leafs[index].key, ptr.leafs[index].value)) {\r\n        break\r\n      }\r\n\r\n      if (ptr.nodes[index] !== null) {\r\n        // Descend Tree\r\n        ptr = ptr.nodes[index]\r\n\r\n        while (ptr.nodes[ptr.nodes.length - 1] !== null) {\r\n          ptr = ptr.nodes[ptr.nodes.length - 1]\r\n        }\r\n\r\n        index = ptr.leafs.length - 1\r\n      } else if (index > 0) {\r\n        // Next\r\n        index--\r\n      } else {\r\n        // Ascend Tree\r\n        do {\r\n          if ((ptr.parent instanceof Tree)) {\r\n            return\r\n          }\r\n\r\n          index = ptr.parent.nodes.indexOf(ptr) - 1\r\n\r\n          ptr = ptr.parent\r\n        } while (index < 0)\r\n      }\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 630,
+        "column": 2
+      },
+      "end": {
+        "line": 718,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "minKey": {
+          "type": "argument",
+          "label": "minKey",
+          "description": "If omitted or NULL, starts at the beginning",
+          "code": "minKey",
+          "start": {
+            "line": 630,
+            "column": 12
+          },
+          "end": {
+            "line": 630,
+            "column": 18
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        },
+        "maxKey": {
+          "type": "argument",
+          "label": "maxKey",
+          "description": "If omitted or NULL, walks till the end",
+          "code": "maxKey",
+          "start": {
+            "line": 630,
+            "column": 20
+          },
+          "end": {
+            "line": 630,
+            "column": 26
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        },
+        "callback": {
+          "type": "method",
+          "label": "callback",
+          "description": "",
+          "code": "@param {function} callback",
+          "start": {
+            "line": 630,
+            "column": 2
+          },
+          "end": {
+            "line": 718,
+            "column": 3
+          },
+          "flags": [],
+          "authors": [],
+          "arguments": {
+            "key": {
+              "type": "argument",
+              "label": "key",
+              "description": "The key",
+              "code": "@param {number} callback.key\nThe key",
+              "start": {
+                "line": 630,
+                "column": 28
+              },
+              "end": {
+                "line": 630,
+                "column": 36
+              },
+              "flags": [],
+              "authors": [],
+              "default": null,
+              "datatype": "number",
+              "required": true,
+              "enum": null
+            },
+            "value": {
+              "type": "argument",
+              "label": "value",
+              "description": "The value.",
+              "code": "@param {any} callback.value\nThe value.",
+              "start": {
+                "line": 630,
+                "column": 28
+              },
+              "end": {
+                "line": 630,
+                "column": 36
+              },
+              "flags": [],
+              "authors": [],
+              "default": null,
+              "datatype": "any",
+              "required": true,
+              "enum": null
+            }
+          },
+          "returnType": "void",
+          "returnDescription": "void",
+          "kind": null,
+          "generator": false,
+          "static": false,
+          "computed": false,
+          "async": false,
+          "super": null,
+          "override": false,
+          "private": false
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "count": {
+      "type": "method",
+      "label": "count",
+      "description": "The number of keys between minKey and maxKey (both inclusive).\r\n  \r\n  If omitted, counts from the start\r\n  \r\n  If omitted, counts till the end",
+      "code": "count (minKey, maxKey) {\r\n    let n = 0\r\n\r\n    this.walk(\r\n      minKey !== undefined ? minKey : null,\r\n      maxKey !== undefined ? maxKey : null,\r\n      (key, value) => { n++ }\r\n    )\r\n\r\n    return n\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 728,
+        "column": 2
+      },
+      "end": {
+        "line": 738,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "minKey": {
+          "type": "argument",
+          "label": "minKey",
+          "description": "If omitted, counts from the start",
+          "code": "minKey",
+          "start": {
+            "line": 728,
+            "column": 9
+          },
+          "end": {
+            "line": 728,
+            "column": 15
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        },
+        "maxKey": {
+          "type": "argument",
+          "label": "maxKey",
+          "description": "If omitted, counts till the end",
+          "code": "maxKey",
+          "start": {
+            "line": 728,
+            "column": 17
+          },
+          "end": {
+            "line": 728,
+            "column": 23
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "number",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "number",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "toString": {
+      "type": "method",
+      "label": "toString",
+      "description": "A string representation of the tree.",
+      "code": "toString () {\r\n    return `Tree(${this.METADATA.order}) ${this.root.toString()}`\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 744,
+        "column": 2
+      },
+      "end": {
+        "line": 746,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "string",
+      "returnDescription": "",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

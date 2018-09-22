@@ -1,0 +1,222 @@
+{
+  "type": "class",
+  "label": "CustomException",
+  "description": null,
+  "code": "class CustomException extends Error { // eslint-disable-line\r\n  constructor (config) {\r\n    super()\r\n\r\n    Object.defineProperty(this, 'frameFilter', NGN.privateconst((frame) => {\r\n      return NGN.nodelike\r\n        ? frame.getFileName() !== __filename && frame.getFileName()\r\n        : frame.getFileName()\r\n    }))\r\n\r\n    config = config || {}\r\n    config = typeof config === 'string' ? { message: config } : config\r\n    config.custom = config.custom || {}\r\n\r\n    let me = this\r\n\r\n    this.name = config.name || 'NgnError'\r\n    this.type = config.type || 'TypeError'\r\n    this.severity = config.severity || 'minor'\r\n    this.message = config.message || 'Unknown Error'\r\n    this.category = config.category || 'operational' // Alternative is \"programmer\"\r\n\r\n    // Cleanup name\r\n    this.name = this.name.replace(/[^a-zA-Z0-9_]/gi, '')\r\n\r\n    // Add any custom properties\r\n    for (let attr in config.custom) {\r\n      if (config.custom.hasOwnProperty(attr)) {\r\n        this[attr] = config.custom[attr]\r\n      }\r\n    }\r\n\r\n    this.hasOwnProperty('custom') && delete this.custom\r\n\r\n    if (NGN.nodelike || Error.prepareStackTrace) {\r\n      // Capture the stack trace on a new error so the detail can be saved as a structured trace.\r\n      Error.prepareStackTrace = function (_, stack) { return stack }\r\n\r\n      let _err = new Error()\r\n\r\n      Error.captureStackTrace(_err, this)\r\n\r\n      this.rawstack = _err.stack\r\n\r\n      Error.prepareStackTrace = function (err, stack) { // eslint-disable-line handle-callback-err\r\n        me.cause && console.warn(me.cause)\r\n        me.help && console.info(me.help)\r\n\r\n        return `${me.name}: ${me.message}\\n` + stack.filter(me.frameFilter).map((el) => {\r\n          return `    at ${el}`\r\n        }).join('\\n')\r\n      }\r\n\r\n      // Enable stack trace\r\n      Error.captureStackTrace(this)\r\n    }\r\n  }\r\n\r\n  /*\r\n   * @property {Array} trace\r\n   * The structured data of the stacktrace. Each array element is a JSON object corresponding to\r\n   * the full stack trace:\r\n   *\r\n   * ```js\r\n   * {\r\n   *   filename: String,\r\n   *   line: Number,\r\n   *   column: Number,\r\n   *   functionname: String,\r\n   *   native: Boolean,\r\n   *   eval: Boolean,\r\n   *   type: String\r\n   * }\r\n   * ```\r\n   * @readonly\r\n   */\r\n  get trace () {\r\n    return this.rawstack.filter(this.frameFilter).map((frame) => {\r\n      return {\r\n        filename: frame.getFileName(),\r\n        line: frame.getLineNumber(),\r\n        column: frame.getColumnNumber(),\r\n        functionname: frame.getFunctionName(),\r\n        native: frame.isNative(),\r\n        eval: frame.isEval(),\r\n        type: frame.getTypeName()\r\n      }\r\n    })\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 1,
+    "column": 15
+  },
+  "end": {
+    "line": 90,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "exception.js",
+  "extends": "Error",
+  "configuration": {},
+  "properties": {
+    "custom": {
+      "type": "property",
+      "label": "custom",
+      "description": null,
+      "code": "config.custom = config.custom || {}",
+      "start": {
+        "line": 13,
+        "column": 11
+      },
+      "end": {
+        "line": 13,
+        "column": 17
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "name": {
+      "type": "property",
+      "label": "name",
+      "description": null,
+      "code": "this.name = this.name.replace(/[^a-zA-Z0-9_]/gi, '')",
+      "start": {
+        "line": 24,
+        "column": 9
+      },
+      "end": {
+        "line": 24,
+        "column": 13
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "type": {
+      "type": "property",
+      "label": "type",
+      "description": null,
+      "code": "this.type = config.type || 'TypeError'",
+      "start": {
+        "line": 18,
+        "column": 9
+      },
+      "end": {
+        "line": 18,
+        "column": 13
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "severity": {
+      "type": "property",
+      "label": "severity",
+      "description": null,
+      "code": "this.severity = config.severity || 'minor'",
+      "start": {
+        "line": 19,
+        "column": 9
+      },
+      "end": {
+        "line": 19,
+        "column": 17
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "message": {
+      "type": "property",
+      "label": "message",
+      "description": null,
+      "code": "this.message = config.message || 'Unknown Error'",
+      "start": {
+        "line": 20,
+        "column": 9
+      },
+      "end": {
+        "line": 20,
+        "column": 16
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "category": {
+      "type": "property",
+      "label": "category",
+      "description": null,
+      "code": "this.category = config.category || 'operational'",
+      "start": {
+        "line": 21,
+        "column": 9
+      },
+      "end": {
+        "line": 21,
+        "column": 17
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "trace": {
+      "type": "property",
+      "label": "trace",
+      "description": null,
+      "code": "get trace () {\r\n    return this.rawstack.filter(this.frameFilter).map((frame) => {\r\n      return {\r\n        filename: frame.getFileName(),\r\n        line: frame.getLineNumber(),\r\n        column: frame.getColumnNumber(),\r\n        functionname: frame.getFunctionName(),\r\n        native: frame.isNative(),\r\n        eval: frame.isEval(),\r\n        type: frame.getTypeName()\r\n      }\r\n    })\r\n  }",
+      "start": {
+        "line": 77,
+        "column": 2
+      },
+      "end": {
+        "line": 89,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor (config) {\r\n    super()\r\n\r\n    Object.defineProperty(this, 'frameFilter', NGN.privateconst((frame) => {\r\n      return NGN.nodelike\r\n        ? frame.getFileName() !== __filename && frame.getFileName()\r\n        : frame.getFileName()\r\n    }))\r\n\r\n    config = config || {}\r\n    config = typeof config === 'string' ? { message: config } : config\r\n    config.custom = config.custom || {}\r\n\r\n    let me = this\r\n\r\n    this.name = config.name || 'NgnError'\r\n    this.type = config.type || 'TypeError'\r\n    this.severity = config.severity || 'minor'\r\n    this.message = config.message || 'Unknown Error'\r\n    this.category = config.category || 'operational' // Alternative is \"programmer\"\r\n\r\n    // Cleanup name\r\n    this.name = this.name.replace(/[^a-zA-Z0-9_]/gi, '')\r\n\r\n    // Add any custom properties\r\n    for (let attr in config.custom) {\r\n      if (config.custom.hasOwnProperty(attr)) {\r\n        this[attr] = config.custom[attr]\r\n      }\r\n    }\r\n\r\n    this.hasOwnProperty('custom') && delete this.custom\r\n\r\n    if (NGN.nodelike || Error.prepareStackTrace) {\r\n      // Capture the stack trace on a new error so the detail can be saved as a structured trace.\r\n      Error.prepareStackTrace = function (_, stack) { return stack }\r\n\r\n      let _err = new Error()\r\n\r\n      Error.captureStackTrace(_err, this)\r\n\r\n      this.rawstack = _err.stack\r\n\r\n      Error.prepareStackTrace = function (err, stack) { // eslint-disable-line handle-callback-err\r\n        me.cause && console.warn(me.cause)\r\n        me.help && console.info(me.help)\r\n\r\n        return `${me.name}: ${me.message}\\n` + stack.filter(me.frameFilter).map((el) => {\r\n          return `    at ${el}`\r\n        }).join('\\n')\r\n      }\r\n\r\n      // Enable stack trace\r\n      Error.captureStackTrace(this)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 2,
+        "column": 2
+      },
+      "end": {
+        "line": 57,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "config": {
+          "type": "argument",
+          "label": "config",
+          "description": null,
+          "code": "config",
+          "start": {
+            "line": 2,
+            "column": 15
+          },
+          "end": {
+            "line": 2,
+            "column": 21
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

@@ -19,20 +19,6 @@ Product.view = new NGNX.VIEW.Registry({
   }
 })
 
-Product.view.fetchProductData = function (url) {
-  NGN.NET.json(url, (err, data) => {
-    if (err) {
-      throw err
-    }
-
-    for (let key in data) {
-      Product.data.load(key, data[key])
-    }
-
-    console.log(Product.data.asJson);
-  })
-}
-
 Product.view.renderCategories = function (parent) {
   let tasks = new NGN.Tasks()
 

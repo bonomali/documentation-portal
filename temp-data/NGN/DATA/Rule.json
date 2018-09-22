@@ -1,0 +1,295 @@
+{
+  "type": "class",
+  "label": "NGN.DATA.Rule",
+  "description": "A data validation rule.",
+  "code": "class NGNDataValidationRule { // eslint-disable-line\r\n  /**\r\n   * Create a new data rule.\r\n   * @param {Function/String[]/Number[]/Date[]/RegExp/Array} rule\r\n   * * When rule is a _function_, the value is passed to it as an argument.\r\n   * * When rule is a _String_, the value is compared for an exact match (case sensitive)\r\n   * * When rule is a _Number_, the value is compared for equality.\r\n   * * When rule is a _Date_, the value is compared for exact equality.\r\n   * * When rule is a _RegExp_, the value is tested and the results of the RegExp#test are used to validate.\r\n   * * When rule is an _Array_, the value is checked to exist in the array, regardless of data type. This is treated as an `enum`.\r\n   * * When rule is _an array of dates_, the value is compared to each date for equality.\r\n   * @param {string} [name]\r\n   * An optional name for the rule. This can be useful when debugging data issues.\r\n   * @param {object} [scope]\r\n   * Apply a custom scope to the validation functions (applicable to custom methods only).\r\n   */\r\n  constructor (validation, name = null, scope = null) {\r\n    const type = NGN.typeof(validation)\r\n\r\n    Object.defineProperties(this, {\r\n      RULE: NGN.private({\r\n        type: type,\r\n        validator: validation,\r\n        name: NGN.coalesce(name, `Untitled ${type.toUpperCase()} Validation`),\r\n        scope: NGN.coalesce(scope, this)\r\n      })\r\n    })\r\n  }\r\n\r\n  get name () {\r\n    return this.RULE.name\r\n  }\r\n\r\n  get type () {\r\n    return this.RULE.type\r\n  }\r\n\r\n  /**\r\n   * @method test\r\n   * Test a value against the validation rule.\r\n   * @param {any} value\r\n   * The value to test.\r\n   * @returns {boolean}\r\n   * Returns `true` when the value meets the rule expectations and `false` when it does not.\r\n   */\r\n  test (value) {\r\n    if (NGN.isFn(this.RULE.validator)) {\r\n      // Custom enforcement function\r\n      return this.RULE.validator.apply(this.RULE.scope, [value])\r\n    } else {\r\n      switch (this.type) {\r\n        // Enumeration\r\n        case 'array':\r\n          return this.RULE.validator.indexOf(value) !== -1\r\n\r\n        // Pattern Matching\r\n        case 'regexp':\r\n          return this.RULE.validator.test(value)\r\n\r\n        default:\r\n          return this.RULE.validator === value\r\n      }\r\n    }\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {
+    "validator.add": {
+      "type": "event",
+      "label": "validator.add",
+      "description": "",
+      "code": "@fires validator.add",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    }
+  },
+  "start": {
+    "line": 6,
+    "column": 15
+  },
+  "end": {
+    "line": 70,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/rule/Rule.js",
+  "extends": null,
+  "configuration": {},
+  "properties": {
+    "RULE": {
+      "type": "property",
+      "label": "RULE",
+      "description": null,
+      "code": "RULE: NGN.private({\r\n        type: type,\r\n        validator: validation,\r\n        name: NGN.coalesce(name, `Untitled ${type.toUpperCase()} Validation`),\r\n        scope: NGN.coalesce(scope, this)\r\n      })",
+      "start": {
+        "line": 26,
+        "column": 6
+      },
+      "end": {
+        "line": 31,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "name": {
+      "type": "property",
+      "label": "name",
+      "description": null,
+      "code": "get name () {\r\n    return this.RULE.name\r\n  }",
+      "start": {
+        "line": 35,
+        "column": 2
+      },
+      "end": {
+        "line": 37,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "type": {
+      "type": "property",
+      "label": "type",
+      "description": null,
+      "code": "get type () {\r\n    return this.RULE.type\r\n  }",
+      "start": {
+        "line": 39,
+        "column": 2
+      },
+      "end": {
+        "line": 41,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": "Create a new data rule.\r\n  \r\n  When rule is a _function_, the value is passed to it as an argument.\r\n  When rule is a _String_, the value is compared for an exact match (case sensitive)\r\n  When rule is a _Number_, the value is compared for equality.\r\n  When rule is a _Date_, the value is compared for exact equality.\r\n  When rule is a _RegExp_, the value is tested and the results of the RegExp#test are used to validate.\r\n  When rule is an _Array_, the value is checked to exist in the array, regardless of data type. This is treated as an `enum`.\r\n  When rule is _an array of dates_, the value is compared to each date for equality.\r\n  \r\n  An optional name for the rule. This can be useful when debugging data issues.\r\n  \r\n  Apply a custom scope to the validation functions (applicable to custom methods only).",
+      "code": "constructor (validation, name = null, scope = null) {\r\n    const type = NGN.typeof(validation)\r\n\r\n    Object.defineProperties(this, {\r\n      RULE: NGN.private({\r\n        type: type,\r\n        validator: validation,\r\n        name: NGN.coalesce(name, `Untitled ${type.toUpperCase()} Validation`),\r\n        scope: NGN.coalesce(scope, this)\r\n      })\r\n    })\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 22,
+        "column": 2
+      },
+      "end": {
+        "line": 33,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "validation": {
+          "type": "argument",
+          "label": "rule",
+          "description": "* When rule is a _function_, the value is passed to it as an argument.\n* When rule is a _String_, the value is compared for an exact match \n* When rule is a _Number_, the value is compared for equality.\n* When rule is a _Date_, the value is compared for exact equality.\n* When rule is a _RegExp_, the value is tested and the results of the RegExp#test are used to validate.\n* When rule is an _Array_, the value is checked to exist in the array, regardless of data type. This is treated as an `enum`.\n* When rule is _an array of dates_, the value is compared to each date for equality.",
+          "code": "validation",
+          "start": {
+            "line": 22,
+            "column": 15
+          },
+          "end": {
+            "line": 22,
+            "column": 25
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function/string[]/number[]/date[]/regexp/array",
+          "required": true,
+          "enum": [
+            "case sensitive"
+          ]
+        },
+        "name": {
+          "type": "argument",
+          "label": "name",
+          "description": "An optional name for the rule. This can be useful when debugging data issues.",
+          "code": "name = null",
+          "start": {
+            "line": 22,
+            "column": 27
+          },
+          "end": {
+            "line": 22,
+            "column": 38
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": false,
+          "enum": null
+        },
+        "scope": {
+          "type": "argument",
+          "label": "scope",
+          "description": "Apply a custom scope to the validation functions .",
+          "code": "scope = null",
+          "start": {
+            "line": 22,
+            "column": 40
+          },
+          "end": {
+            "line": 22,
+            "column": 52
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "object",
+          "required": false,
+          "enum": [
+            "applicable to custom methods only"
+          ]
+        },
+        "rule": {
+          "type": "argument",
+          "label": "rule",
+          "description": "* When rule is a _function_, the value is passed to it as an argument.\n* When rule is a _String_, the value is compared for an exact match \n* When rule is a _Number_, the value is compared for equality.\n* When rule is a _Date_, the value is compared for exact equality.\n* When rule is a _RegExp_, the value is tested and the results of the RegExp#test are used to validate.\n* When rule is an _Array_, the value is checked to exist in the array, regardless of data type. This is treated as an `enum`.\n* When rule is _an array of dates_, the value is compared to each date for equality.",
+          "code": "validation",
+          "start": {
+            "line": 22,
+            "column": 15
+          },
+          "end": {
+            "line": 22,
+            "column": 25
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "function/string[]/number[]/date[]/regexp/array",
+          "required": true,
+          "enum": [
+            "case sensitive"
+          ]
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "test": {
+      "type": "method",
+      "label": "test",
+      "description": "Test a value against the validation rule.",
+      "code": "test (value) {\r\n    if (NGN.isFn(this.RULE.validator)) {\r\n      // Custom enforcement function\r\n      return this.RULE.validator.apply(this.RULE.scope, [value])\r\n    } else {\r\n      switch (this.type) {\r\n        // Enumeration\r\n        case 'array':\r\n          return this.RULE.validator.indexOf(value) !== -1\r\n\r\n        // Pattern Matching\r\n        case 'regexp':\r\n          return this.RULE.validator.test(value)\r\n\r\n        default:\r\n          return this.RULE.validator === value\r\n      }\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 51,
+        "column": 2
+      },
+      "end": {
+        "line": 69,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "The value to test.",
+          "code": "value",
+          "start": {
+            "line": 51,
+            "column": 8
+          },
+          "end": {
+            "line": 51,
+            "column": 13
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "boolean",
+      "returnDescription": "null Returns `true` when the value meets the rule expectations and `false` when it does not.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

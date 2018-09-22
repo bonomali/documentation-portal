@@ -1,0 +1,682 @@
+{
+  "type": "class",
+  "label": "NGN.DATA.TransactionLog",
+  "description": "Returns the entire log, in ascending historical order (oldest first).\r\n  This may be a time-consuming operation if the log is large.\r\n  \n  Example:\n  \n  ```js\r\n  [{\r\n    timestamp: Date,\r\n    value: 'some value'\r\n  },{\r\n    timestamp: Date,\r\n    value: 'some other value'\r\n  }]",
+  "code": "class NGNTransactionLog extends EventEmitter { // eslint-disable-line\r\n  /**\r\n   * Create a new transaction log.\r\n   * @param  {number} [maxEntryCount=10]\r\n   * The maximum number of entries to keep in the log. Set this to `-1` to keep\r\n   * an unlimited number of logs.\r\n   */\r\n  constructor (maxEntryCount) {\r\n    super()\r\n\r\n    Object.defineProperties(this, {\r\n      METADATA: NGN.private({\r\n        transaction: {},\r\n        changeOrder: [],\r\n        cursor: null,\r\n        max: NGN.coalesce(maxEntryCount, 10)\r\n      })\r\n    })\r\n  }\r\n\r\n  get length () {\r\n    return this.METADATA.changeOrder.length\r\n  }\r\n\r\n  /**\r\n   * @property {Symbol} cursor\r\n   * The active cursor of the log.\r\n   */\r\n  get cursor () {\r\n    return this.METADATA.cursor\r\n  }\r\n\r\n  set cursor (value) {\r\n    if (value !== null && !this.METADATA.transaction.hasOwnProperty(value)) {\r\n      throw new Error('Cannot set cursor for transaction log (does not exist).')\r\n    }\r\n\r\n    this.METADATA.cursor = value\r\n  }\r\n\r\n  /**\r\n   * @property {any} currentValue\r\n   * Returns the value at the current cursor position.\r\n   */\r\n  get currentValue () {\r\n    if (this.METADATA.cursor === null) {\r\n      return undefined\r\n    }\r\n\r\n    return this.getCommit(this.METADATA.cursor).value\r\n  }\r\n\r\n  /**\r\n   * @property {Number}\r\n   * The index of the log entry at the current cursor position.\r\n   */\r\n  get cursorIndex () {\r\n    if (this.METADATA.cursor === null) {\r\n      return undefined\r\n    }\r\n\r\n    return this.METADATA.changeOrder.indexOf(this.METADATA.cursor)\r\n  }\r\n\r\n  /**\r\n   * Add a new value to the transaction log.\r\n   * @param {Any} value\r\n   * The value to assign to the log (record).\r\n   * @return {Number}\r\n   * Returns the transaction number\r\n   * @fires log {Symbol}\r\n   * Fires a log event with the transaction ID (symbol) for reference.\r\n   */\r\n  commit (value) {\r\n    let id = typeof value === 'symbol' ? Symbol(String(value)) : Symbol(NGN.coalesce(value, NGN.typeof(value)).toString())\r\n\r\n    this.METADATA.transaction[id] = [\r\n      new Date(),\r\n      value\r\n    ]\r\n\r\n    this.flush()\r\n\r\n    this.METADATA.changeOrder.push(id)\r\n    this.METADATA.cursor = id\r\n\r\n    if (this.METADATA.max > 0 && this.METADATA.changeOrder.length > this.METADATA.max) {\r\n      let removedId = this.METADATA.changeOrder.shift()\r\n      delete this.METADATA.transaction[removedId]\r\n    }\r\n\r\n    this.emit('commit', id, null)\r\n\r\n    return id\r\n  }\r\n\r\n  /**\r\n   * Return the entry for the specified commit ID.\r\n   * @param  {Symbol} id\r\n   * The transaction ID.\r\n   * @return {Object}\r\n   * Returns an object with `timestamp` and `value` keys.\r\n   */\r\n  getCommit (id = null) {\r\n    if (!this.METADATA.transaction.hasOwnProperty(id)) {\r\n      return undefined\r\n    }\r\n\r\n    return {\r\n      timestamp: this.METADATA.transaction[id][0],\r\n      value: this.METADATA.transaction[id][1]\r\n    }\r\n  }\r\n\r\n  /**\r\n   * Remove all transaction log entries from the current cursor onward.\r\n   */\r\n  flush () {\r\n    if (this.METADATA.cursor === null) {\r\n      return\r\n    }\r\n\r\n    let position = this.METADATA.changeOrder.indexOf(this.METADATA.cursor)\r\n\r\n    // If the whole log is cleared, reset it silently.\r\n    if (position === 0) {\r\n      return\r\n    }\r\n\r\n    let removedEntries = this.METADATA.changeOrder.splice(position + 1)\r\n\r\n    for (let i = 0; i < removedEntries.length; i++) {\r\n      delete this.METADATA.transaction[removedEntries[i]]\r\n    }\r\n\r\n    this.METADATA.cursor = this.METADATA.changeOrder[this.METADATA.changeOrder.length - 1]\r\n  }\r\n\r\n  /**\r\n   * Rollback the log to the specified index/cursor.\r\n   * @param  {Number|Symbol} [index=1]\r\n   * The index may be a number or a commit ID (symbol).\r\n   *\r\n   * **Specifying a number** will rollback the log by the specified number of\r\n   * commits. By default, the index is `1`, which is the equivalent of a simple\r\n   * \"undo\" operation. Specifying `2` would \"undo\" two operations. Values less\r\n   * than or equal to zero are ignored. Values greater than the total number of\r\n   * committed transactions trigger a reset.\r\n   *\r\n   * **Specifying a symbol** will rollback the log to the specified commit log\r\n   * (the symbol is the commit log ID).\r\n   * @fires rollback {Object}\r\n   * This fires a `rollback` event containing the active cursor.\r\n   * @return {Symbol}\r\n   * Returns the active cursor upon completion of rollback.\r\n   */\r\n  rollback (index = 1) {\r\n    // If the log is empty, ignore the rollback\r\n    if (this.METADATA.changeOrder.length === 0) {\r\n      return null\r\n    }\r\n\r\n    if (typeof index === 'symbol') {\r\n      this.cursor = index\r\n      return index\r\n    }\r\n\r\n    if (index >= this.METADATA.changeOrder.length) {\r\n      this.METADATA.cursor = this.METADATA.changeOrder[0]\r\n    } else {\r\n      // Make sure the index is a symbol\r\n      if (typeof index === 'number') {\r\n        if (index <= 0) {\r\n          return this.METADATA.cursor\r\n        }\r\n\r\n        let currentPosition = this.METADATA.changeOrder.indexOf(this.METADATA.cursor)\r\n        currentPosition -= index\r\n\r\n        if (currentPosition <= 0) {\r\n          currentPosition = 0\r\n        }\r\n\r\n        index = this.METADATA.changeOrder[currentPosition]\r\n      }\r\n\r\n      this.METADATA.cursor = index\r\n    }\r\n\r\n    this.emit('rollback', this.METADATA.cursor, null)\r\n\r\n    return this.METADATA.cursor\r\n  }\r\n\r\n  /**\r\n   * Advance the log to the specified index/cursor.\r\n   * @param  {Number|Symbol} [index=1]\r\n   * The index may be a number or a commit ID (symbol).\r\n   *\r\n   * **Specifying a number** will advance the log by the specified number of\r\n   * commits. By default, the index is `1`, which is the equivalent of a simple\r\n   * \"redo\" operation. Specifying `2` would \"redo\" two operations. Values less\r\n   * than or equal to zero are ignored. Values greater than the total number of\r\n   * committed transactions will advance the cursor to the last entry.\r\n   *\r\n   * **Specifying a symbol** will advance the log to the specified commit log\r\n   * record (the symbol is the commit log ID).\r\n   * @fires advance {Object}\r\n   * This fires a `advance` event containing the active cursor.\r\n   * @return {Symbol}\r\n   * Returns the active cursor upon completion of rollback.\r\n   */\r\n  advance (index = 1) {\r\n    // If the log is empty, ignore the rollback\r\n    if (this.METADATA.changeOrder.length === 0) {\r\n      return null\r\n    }\r\n\r\n    // Make sure the index is a symbol\r\n    if (typeof index === 'number') {\r\n      if (index <= 0) {\r\n        return this.METADATA.cursor\r\n      }\r\n\r\n      let currentPosition = this.METADATA.changeOrder.indexOf(this.METADATA.cursor)\r\n      currentPosition += index\r\n\r\n      if (currentPosition >= this.METADATA.changeOrder.length) {\r\n        currentPosition = this.METADATA.changeOrder.length - 1\r\n      }\r\n\r\n      index = this.METADATA.changeOrder[currentPosition]\r\n    }\r\n\r\n    this.METADATA.cursor = index\r\n\r\n    this.emit('advance', this.METADATA.cursor, null)\r\n\r\n    return this.METADATA.cursor\r\n  }\r\n\r\n  /**\r\n   * Clear the transaction log.\r\n   */\r\n  reset (suppressEvents = false) {\r\n    this.METADATA.transaction = {}\r\n    this.METADATA.changeOrder = []\r\n    this.METADATA.cursor = null\r\n\r\n    if (!suppressEvents) {\r\n      this.emit('reset')\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @property {Array} log\r\n   * Returns the entire log, in ascending historical order (oldest first).\r\n   * This may be a time-consuming operation if the log is large.\r\n   *\r\n   * **Example:**\r\n   *\r\n   * ```js\r\n   * [{\r\n   *   timestamp: Date,\r\n   *   value: 'some value'\r\n   * },{\r\n   *   timestamp: Date,\r\n   *   value: 'some other value'\r\n   * }]\r\n   */\r\n  get log () {\r\n    return this.METADATA.changeOrder.map(entry => {\r\n      return {\r\n        timestamp: this.METADATA.transaction[entry][0],\r\n        value: this.METADATA.transaction[entry][1],\r\n        activeCursor: this.METADATA.cursor === entry\r\n      }\r\n    })\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {
+    "commit": {
+      "type": "event",
+      "label": "commit",
+      "description": null,
+      "code": "this.emit('commit', id, null)",
+      "start": {
+        "line": 144,
+        "column": 4
+      },
+      "end": {
+        "line": 144,
+        "column": 33
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "id": {
+          "type": "argument",
+          "label": "id",
+          "description": null,
+          "code": "id",
+          "start": {
+            "line": 144,
+            "column": 24
+          },
+          "end": {
+            "line": 144,
+            "column": 26
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "payload2": {
+          "type": "argument",
+          "label": "payload2",
+          "description": null,
+          "code": "null",
+          "start": {
+            "line": 144,
+            "column": 28
+          },
+          "end": {
+            "line": 144,
+            "column": 32
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "log": {
+      "type": "event",
+      "label": "log",
+      "description": "{Symbol}\nFires a log event with the transaction ID  for reference.",
+      "code": "@fires log {Symbol}\nFires a log event with the transaction ID (symbol) for reference.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "rollback": {
+      "type": "event",
+      "label": "rollback",
+      "description": "{Object}\nThis fires a `rollback` event containing the active cursor.",
+      "code": "@fires rollback {Object}\nThis fires a `rollback` event containing the active cursor.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "advance": {
+      "type": "event",
+      "label": "advance",
+      "description": "{Object}\nThis fires a `advance` event containing the active cursor.",
+      "code": "@fires advance {Object}\nThis fires a `advance` event containing the active cursor.",
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 0,
+        "column": 0
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {
+        "payload": {
+          "type": "argument",
+          "label": "payload",
+          "description": null,
+          "code": null,
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "end": {
+            "line": 0,
+            "column": 0
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "",
+          "required": false,
+          "enum": null
+        }
+      },
+      "deprecated": false,
+      "deprecationReplacement": null
+    },
+    "reset": {
+      "type": "event",
+      "label": "reset",
+      "description": null,
+      "code": "this.emit('reset')",
+      "start": {
+        "line": 303,
+        "column": 6
+      },
+      "end": {
+        "line": 303,
+        "column": 24
+      },
+      "flags": [],
+      "authors": [],
+      "parameters": {},
+      "deprecated": false,
+      "deprecationReplacement": null
+    }
+  },
+  "start": {
+    "line": 53,
+    "column": 15
+  },
+  "end": {
+    "line": 332,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "data/TransactionLog.js",
+  "extends": "EventEmitter",
+  "configuration": {},
+  "properties": {
+    "METADATA": {
+      "type": "property",
+      "label": "METADATA",
+      "description": null,
+      "code": "METADATA: NGN.private({\r\n        transaction: {},\r\n        changeOrder: [],\r\n        cursor: null,\r\n        max: NGN.coalesce(maxEntryCount, 10)\r\n      })",
+      "start": {
+        "line": 64,
+        "column": 6
+      },
+      "end": {
+        "line": 69,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "length": {
+      "type": "property",
+      "label": "length",
+      "description": null,
+      "code": "get length () {\r\n    return this.METADATA.changeOrder.length\r\n  }",
+      "start": {
+        "line": 73,
+        "column": 2
+      },
+      "end": {
+        "line": 75,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "cursor": {
+      "type": "property",
+      "label": "cursor",
+      "description": null,
+      "code": "set cursor (value) {\r\n    if (value !== null && !this.METADATA.transaction.hasOwnProperty(value)) {\r\n      throw new Error('Cannot set cursor for transaction log (does not exist).')\r\n    }\r\n\r\n    this.METADATA.cursor = value\r\n  }",
+      "start": {
+        "line": 85,
+        "column": 2
+      },
+      "end": {
+        "line": 91,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "currentValue": {
+      "type": "property",
+      "label": "currentValue",
+      "description": null,
+      "code": "get currentValue () {\r\n    if (this.METADATA.cursor === null) {\r\n      return undefined\r\n    }\r\n\r\n    return this.getCommit(this.METADATA.cursor).value\r\n  }",
+      "start": {
+        "line": 97,
+        "column": 2
+      },
+      "end": {
+        "line": 103,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "cursorIndex": {
+      "type": "property",
+      "label": "cursorIndex",
+      "description": null,
+      "code": "get cursorIndex () {\r\n    if (this.METADATA.cursor === null) {\r\n      return undefined\r\n    }\r\n\r\n    return this.METADATA.changeOrder.indexOf(this.METADATA.cursor)\r\n  }",
+      "start": {
+        "line": 109,
+        "column": 2
+      },
+      "end": {
+        "line": 115,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "log": {
+      "type": "property",
+      "label": "log",
+      "description": null,
+      "code": "get log () {\r\n    return this.METADATA.changeOrder.map(entry => {\r\n      return {\r\n        timestamp: this.METADATA.transaction[entry][0],\r\n        value: this.METADATA.transaction[entry][1],\r\n        activeCursor: this.METADATA.cursor === entry\r\n      }\r\n    })\r\n  }",
+      "start": {
+        "line": 323,
+        "column": 2
+      },
+      "end": {
+        "line": 331,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": "Create a new transaction log.\r\n  \r\n  The maximum number of entries to keep in the log. Set this to `-1` to keep\r\n  an unlimited number of logs.",
+      "code": "constructor (maxEntryCount) {\r\n    super()\r\n\r\n    Object.defineProperties(this, {\r\n      METADATA: NGN.private({\r\n        transaction: {},\r\n        changeOrder: [],\r\n        cursor: null,\r\n        max: NGN.coalesce(maxEntryCount, 10)\r\n      })\r\n    })\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 60,
+        "column": 2
+      },
+      "end": {
+        "line": 71,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "maxEntryCount": {
+          "type": "argument",
+          "label": "maxEntryCount",
+          "description": "The maximum number of entries to keep in the log. Set this to `-1` to keep\nan unlimited number of logs.",
+          "code": "maxEntryCount",
+          "start": {
+            "line": 60,
+            "column": 15
+          },
+          "end": {
+            "line": 60,
+            "column": 28
+          },
+          "flags": [],
+          "authors": [],
+          "default": "10",
+          "datatype": "number",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "commit": {
+      "type": "method",
+      "label": "commit",
+      "description": "Add a new value to the transaction log.\r\n  \r\n  The value to assign to the log (record).\r\n  \r\n  Returns the transaction number\r\n  \r\n  Fires a log event with the transaction ID (symbol) for reference.",
+      "code": "commit (value) {\r\n    let id = typeof value === 'symbol' ? Symbol(String(value)) : Symbol(NGN.coalesce(value, NGN.typeof(value)).toString())\r\n\r\n    this.METADATA.transaction[id] = [\r\n      new Date(),\r\n      value\r\n    ]\r\n\r\n    this.flush()\r\n\r\n    this.METADATA.changeOrder.push(id)\r\n    this.METADATA.cursor = id\r\n\r\n    if (this.METADATA.max > 0 && this.METADATA.changeOrder.length > this.METADATA.max) {\r\n      let removedId = this.METADATA.changeOrder.shift()\r\n      delete this.METADATA.transaction[removedId]\r\n    }\r\n\r\n    this.emit('commit', id, null)\r\n\r\n    return id\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 126,
+        "column": 2
+      },
+      "end": {
+        "line": 147,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "The value to assign to the log .",
+          "code": "value",
+          "start": {
+            "line": 126,
+            "column": 10
+          },
+          "end": {
+            "line": 126,
+            "column": 15
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "any",
+          "required": true,
+          "enum": [
+            "record"
+          ]
+        }
+      },
+      "returnType": "Number",
+      "returnDescription": "null Returns the transaction number",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getCommit": {
+      "type": "method",
+      "label": "getCommit",
+      "description": "Return the entry for the specified commit ID.\r\n  \r\n  The transaction ID.\r\n  \r\n  Returns an object with `timestamp` and `value` keys.",
+      "code": "getCommit (id = null) {\r\n    if (!this.METADATA.transaction.hasOwnProperty(id)) {\r\n      return undefined\r\n    }\r\n\r\n    return {\r\n      timestamp: this.METADATA.transaction[id][0],\r\n      value: this.METADATA.transaction[id][1]\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 156,
+        "column": 2
+      },
+      "end": {
+        "line": 165,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "id": {
+          "type": "argument",
+          "label": "id",
+          "description": "The transaction ID.",
+          "code": "id = null",
+          "start": {
+            "line": 156,
+            "column": 13
+          },
+          "end": {
+            "line": 156,
+            "column": 22
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "symbol",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "Object",
+      "returnDescription": "null Returns an object with `timestamp` and `value` keys.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "flush": {
+      "type": "method",
+      "label": "flush",
+      "description": "Remove all transaction log entries from the current cursor onward.",
+      "code": "flush () {\r\n    if (this.METADATA.cursor === null) {\r\n      return\r\n    }\r\n\r\n    let position = this.METADATA.changeOrder.indexOf(this.METADATA.cursor)\r\n\r\n    // If the whole log is cleared, reset it silently.\r\n    if (position === 0) {\r\n      return\r\n    }\r\n\r\n    let removedEntries = this.METADATA.changeOrder.splice(position + 1)\r\n\r\n    for (let i = 0; i < removedEntries.length; i++) {\r\n      delete this.METADATA.transaction[removedEntries[i]]\r\n    }\r\n\r\n    this.METADATA.cursor = this.METADATA.changeOrder[this.METADATA.changeOrder.length - 1]\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 170,
+        "column": 2
+      },
+      "end": {
+        "line": 189,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "rollback": {
+      "type": "method",
+      "label": "rollback",
+      "description": "Rollback the log to the specified index/cursor.\r\n  \r\n  The index may be a number or a commit ID (symbol).\r\n  \n  Specifying a numberwill rollback the log by the specified number of\r\n  commits. By default, the index is `1`, which is the equivalent of a simple\r\n  \"undo\" operation. Specifying `2` would \"undo\" two operations. Values less\r\n  than or equal to zero are ignored. Values greater than the total number of\r\n  committed transactions trigger a reset.\r\n  \n  Specifying a symbolwill rollback the log to the specified commit log\r\n  (the symbol is the commit log ID).\r\n  \r\n  This fires a `rollback` event containing the active cursor.\r\n  \r\n  Returns the active cursor upon completion of rollback.",
+      "code": "rollback (index = 1) {\r\n    // If the log is empty, ignore the rollback\r\n    if (this.METADATA.changeOrder.length === 0) {\r\n      return null\r\n    }\r\n\r\n    if (typeof index === 'symbol') {\r\n      this.cursor = index\r\n      return index\r\n    }\r\n\r\n    if (index >= this.METADATA.changeOrder.length) {\r\n      this.METADATA.cursor = this.METADATA.changeOrder[0]\r\n    } else {\r\n      // Make sure the index is a symbol\r\n      if (typeof index === 'number') {\r\n        if (index <= 0) {\r\n          return this.METADATA.cursor\r\n        }\r\n\r\n        let currentPosition = this.METADATA.changeOrder.indexOf(this.METADATA.cursor)\r\n        currentPosition -= index\r\n\r\n        if (currentPosition <= 0) {\r\n          currentPosition = 0\r\n        }\r\n\r\n        index = this.METADATA.changeOrder[currentPosition]\r\n      }\r\n\r\n      this.METADATA.cursor = index\r\n    }\r\n\r\n    this.emit('rollback', this.METADATA.cursor, null)\r\n\r\n    return this.METADATA.cursor\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 209,
+        "column": 2
+      },
+      "end": {
+        "line": 245,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "index": {
+          "type": "argument",
+          "label": "index",
+          "description": "The index may be a number or a commit ID .\n\n**Specifying a number** will rollback the log by the specified number of\ncommits. By default, the index is `1`, which is the equivalent of a simple\n\"undo\" operation. Specifying `2` would \"undo\" two operations. Values less\nthan or equal to zero are ignored. Values greater than the total number of\ncommitted transactions trigger a reset.\n\n**Specifying a symbol** will rollback the log to the specified commit log\n(the symbol is the commit log ID).",
+          "code": "index = 1",
+          "start": {
+            "line": 209,
+            "column": 12
+          },
+          "end": {
+            "line": 209,
+            "column": 21
+          },
+          "flags": [],
+          "authors": [],
+          "default": "1",
+          "datatype": "number|symbol",
+          "required": false,
+          "enum": [
+            "symbol"
+          ]
+        }
+      },
+      "returnType": "Symbol",
+      "returnDescription": "null Returns the active cursor upon completion of rollback.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "advance": {
+      "type": "method",
+      "label": "advance",
+      "description": "Advance the log to the specified index/cursor.\r\n  \r\n  The index may be a number or a commit ID (symbol).\r\n  \n  Specifying a numberwill advance the log by the specified number of\r\n  commits. By default, the index is `1`, which is the equivalent of a simple\r\n  \"redo\" operation. Specifying `2` would \"redo\" two operations. Values less\r\n  than or equal to zero are ignored. Values greater than the total number of\r\n  committed transactions will advance the cursor to the last entry.\r\n  \n  Specifying a symbolwill advance the log to the specified commit log\r\n  record (the symbol is the commit log ID).\r\n  \r\n  This fires a `advance` event containing the active cursor.\r\n  \r\n  Returns the active cursor upon completion of rollback.",
+      "code": "advance (index = 1) {\r\n    // If the log is empty, ignore the rollback\r\n    if (this.METADATA.changeOrder.length === 0) {\r\n      return null\r\n    }\r\n\r\n    // Make sure the index is a symbol\r\n    if (typeof index === 'number') {\r\n      if (index <= 0) {\r\n        return this.METADATA.cursor\r\n      }\r\n\r\n      let currentPosition = this.METADATA.changeOrder.indexOf(this.METADATA.cursor)\r\n      currentPosition += index\r\n\r\n      if (currentPosition >= this.METADATA.changeOrder.length) {\r\n        currentPosition = this.METADATA.changeOrder.length - 1\r\n      }\r\n\r\n      index = this.METADATA.changeOrder[currentPosition]\r\n    }\r\n\r\n    this.METADATA.cursor = index\r\n\r\n    this.emit('advance', this.METADATA.cursor, null)\r\n\r\n    return this.METADATA.cursor\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 265,
+        "column": 2
+      },
+      "end": {
+        "line": 292,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "index": {
+          "type": "argument",
+          "label": "index",
+          "description": "The index may be a number or a commit ID .\n\n**Specifying a number** will advance the log by the specified number of\ncommits. By default, the index is `1`, which is the equivalent of a simple\n\"redo\" operation. Specifying `2` would \"redo\" two operations. Values less\nthan or equal to zero are ignored. Values greater than the total number of\ncommitted transactions will advance the cursor to the last entry.\n\n**Specifying a symbol** will advance the log to the specified commit log\nrecord (the symbol is the commit log ID).",
+          "code": "index = 1",
+          "start": {
+            "line": 265,
+            "column": 11
+          },
+          "end": {
+            "line": 265,
+            "column": 20
+          },
+          "flags": [],
+          "authors": [],
+          "default": "1",
+          "datatype": "number|symbol",
+          "required": false,
+          "enum": [
+            "symbol"
+          ]
+        }
+      },
+      "returnType": "Symbol",
+      "returnDescription": "null Returns the active cursor upon completion of rollback.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "reset": {
+      "type": "method",
+      "label": "reset",
+      "description": "Clear the transaction log.",
+      "code": "reset (suppressEvents = false) {\r\n    this.METADATA.transaction = {}\r\n    this.METADATA.changeOrder = []\r\n    this.METADATA.cursor = null\r\n\r\n    if (!suppressEvents) {\r\n      this.emit('reset')\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 297,
+        "column": 2
+      },
+      "end": {
+        "line": 305,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "suppressEvents": {
+          "type": "argument",
+          "label": "suppressEvents",
+          "description": null,
+          "code": "suppressEvents = false",
+          "start": {
+            "line": 297,
+            "column": 9
+          },
+          "end": {
+            "line": 297,
+            "column": 31
+          },
+          "flags": [],
+          "authors": [],
+          "default": false,
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

@@ -1,0 +1,1637 @@
+{
+  "type": "class",
+  "label": "NGN.NET.Request",
+  "description": "Supply a bearer access token for basic authenticaiton operations.",
+  "code": "class Request { // eslint-disable-line no-unused-vars\r\n  constructor (cfg) {\r\n    cfg = cfg || {}\r\n\r\n    // Require URL and HTTP method\r\n    NGN.objectRequires(cfg, 'url')\r\n\r\n    if (NGN.objectHasAny(cfg, 'form', 'json')) {\r\n      NGN.WARN('NET.Request', '\"form\" and \"json\" configuration properties are not valid. Use \"body\" instead.')\r\n    }\r\n\r\n    Object.defineProperties(this, {\r\n      UrlPattern: NGN.privateconst(new RegExp('^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\\\?([^#]*))?(#(.*))?')),\r\n\r\n      /**\r\n       * @cfgproperty {string} url (required)\r\n       * The complete URL for the request, including query parameters.\r\n       */\r\n      uri: NGN.private(null),\r\n\r\n      /**\r\n       * @cfg {string} [method=GET]\r\n       * The HTTP method to invoke when the request is sent. The standard\r\n       * RFC 2616 HTTP methods include:\r\n       *\r\n       * - OPTIONS\r\n       * - HEAD\r\n       * - GET\r\n       * - POST\r\n       * - PUT\r\n       * - DELETE\r\n       * - TRACE\r\n       * - CONNECT\r\n       *\r\n       * There are many additional non-standard methods some remote hosts\r\n       * will accept, including `PATCH`, `COPY`, `LINK`, `UNLINK`, `PURGE`,\r\n       * `LOCK`, `UNLOCK`, `VIEW`, and many others. If the remote host\r\n       * supports these methods, they may be used in an NGN.NET.Request.\r\n       * Non-standard methods will not be prevented, but NGN will trigger\r\n       * a warning event if a non-standard request is created.\r\n       */\r\n      httpmethod: NGN.private(null),\r\n\r\n      /**\r\n       * @cfg {boolean} [enforceMethodSafety=true]\r\n       * According to [RFC 2616](https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html),\r\n       * some HTTP methods are considered idempotent (safe). These methods\r\n       * should have no significance to data (i.e. read-only). For example,\r\n       * `OPTIONS`, `HEAD`, and `GET` are all idempotent. By default, NGN.NET\r\n       * loosely enforces idempotence by ignoring the #body when making a\r\n       * request. While it is not advised, nor officially supported, NGN.NET can\r\n       * technically ignore method safety, allowing a request body to be\r\n       * sent to a remote server. Set this configuration to `false` to\r\n       * prevent NGN.NET from enforcing idempotence/safety.\r\n       */\r\n      enforceMethodSafety: NGN.private(NGN.coalesce(cfg.enforceMethodSafety, cfg.enforcemethodsafety, true)),\r\n\r\n      /**\r\n       * @cfg {object} [headers]\r\n       * Optionally supply custom headers for the request. Most standard\r\n       * headers will be applied automatically (when appropriate), such\r\n       * as `Content-Type`, `Content-Length`, and `Authorization`.\r\n       * In Node-like environments, a `User-Agent` will be applied containing\r\n       * the `hostname` of the system making the request. Any custom headers\r\n       * supplied will override headers managed by NGN.NET.\r\n       */\r\n      headers: NGN.public(NGN.coalesceb(cfg.headers)),\r\n\r\n      /**\r\n       * @cfg {object|string|binary} [body]\r\n       * The body configuration supports text, an object, or a data URL or\r\n       * binary content. **For multi-part form data (file uploads), use\r\n       * the #files configuration _instead_ of this attribute.**\r\n       *\r\n       * It is also possible to construct a simple form submission\r\n       * (x-www-form-urlencoded) from a specially formatted key/value object\r\n       * conforming to the following syntax:\r\n       *\r\n       * ```json\r\n       * {\r\n       *   form: {\r\n       *     form_field_1: \"value\",\r\n       *     form_field_2: \"value\",\r\n       *     form_field_3: \"value\",\r\n       *   }\r\n       * }\r\n       * ```\r\n       * The object above will be automatically converted & url-encoded as:\r\n       *\r\n       * ```js\r\n       * form_field_1=value&form_field_2=value&form_field_3=value\r\n       * ```\r\n       *\r\n       * The appropriate request headers are automatically applied.\r\n       */\r\n      requestbody: NGN.public(NGN.coalesce(cfg.body)),\r\n\r\n      /**\r\n       * @cfgproperty {string} username\r\n       * A username to authenticate the request with (basic auth).\r\n       */\r\n      user: NGN.private(NGN.coalesceb(cfg.username)),\r\n\r\n      /**\r\n       * @cfgproperty {string} password\r\n       * A password to authenticate the request with (basic auth).\r\n       * @readonly\r\n       */\r\n      secret: NGN.private(NGN.coalesceb(cfg.password)),\r\n\r\n      /**\r\n       * @cfgproperty {string} accessToken\r\n       * An access token to authenticate the request with (Bearer auth).\r\n       * If this is configured, it will override any basic auth settings.\r\n       */\r\n      bearerAccessToken: NGN.private(NGN.coalesceb(cfg.accessToken)),\r\n\r\n      /**\r\n       * @cfgproperty {boolean} [withCredentials=false]\r\n       * Indicates whether or not cross-site `Access-Control` requests should\r\n       * be made using credentials such as cookies, authorization headers or\r\n       * TLS client certificates. Setting `withCredentials` has no effect on\r\n       * same-site requests.\r\n       *\r\n       * In addition, this flag is also used to indicate when cookies are to\r\n       * be ignored in the response. The default is `false`. XMLHttpRequest\r\n       * from a different domain cannot set cookie values for their own\r\n       * domain unless `withCredentials` is set to true before making the\r\n       * request. The third-party cookies obtained by setting `withCredentials`\r\n       * to true will still honor same-origin policy and hence can not be\r\n       * accessed by the requesting script through\r\n       * [document.cookie](https://developer.mozilla.org/en-US/docs/Web/API/Document/cookie)\r\n       * or from response headers.\r\n       */\r\n      withCredentials: NGN.private(NGN.coalesce(cfg.withCredentials, false)),\r\n\r\n      /**\r\n       * @cfgproperty {Number} [timeout=30000]\r\n       * The number of milliseconds to wait before considering the request to\r\n       * have timed out. Defaults to `30000` (30 seconds).\r\n       */\r\n      timeout: NGN.public(NGN.coalesce(cfg.timeout, 30000)),\r\n\r\n      /**\r\n       * @method timer\r\n       * A placeholder for a timeout monitor.\r\n       * @private\r\n       */\r\n      timer: NGN.private(null),\r\n\r\n      /**\r\n       * @method isCrossOrigin\r\n       * Determine if accessing a URL is considered a cross origin request.\r\n       * @param {string} url\r\n       * The URL to identify as a COR.\r\n       * @returns {boolean}\r\n       * @private\r\n       */\r\n      isCrossOrigin: NGN.privateconst(function (url) {\r\n        /* node-only */\r\n        if (networkInterfaces.indexOf(this.host) < 0) {\r\n          return true\r\n        }\r\n        /* end-node-only */\r\n\r\n        return this.host !== hostname // eslint-disable-line no-undef\r\n      }),\r\n\r\n      /**\r\n       * @method applyAuthorizationHeader\r\n       * Generates and applies the authorization header for the request,\r\n       * based on the presence of #username, #password, or #accessToken.\r\n       * @private\r\n       */\r\n      applyAuthorizationHeader: NGN.privateconst(() => {\r\n        if (NGN.coalesceb(this.bearerAccessToken) !== null) {\r\n          this.setHeader('Authorization', `Bearer ${this.bearerAccessToken}`, true)\r\n        } else if (NGN.coalesceb(this.user) && NGN.coalesceb(this.secret)) {\r\n          this.setHeader('Authorization', this.basicAuthToken(this.user, this.secret), true)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method basicAuthToken\r\n       * Generates a basic authentication token from a username and password.\r\n       * @return {[type]} [description]\r\n       * @private\r\n       */\r\n      basicAuthToken: NGN.privateconst((user, secret) => {\r\n        // Binary to base64-ascii conversions\r\n        /* node-only */\r\n        return 'Basic ' + Buffer.from(`${user}:${secret}`, 'binary').toString('base64')\r\n        /* end-node-only */\r\n        /* browser-only */\r\n        return 'Basic ' + NGN.global.btoa(`${user}:${secret}`) // eslint-disable-line no-unreachable\r\n        /* end-browser-only */\r\n      }),\r\n\r\n      /**\r\n       * @method parseUri\r\n       * Parses the URI into composable parts.\r\n       * @param {string} URL\r\n       * The URI/URL to parse.\r\n       * @return {Object}\r\n       * Returns a key/value object:\r\n       *\r\n       * ```js\r\n       * {\r\n       *   protocol: 'http',\r\n       *   hostname: 'domain.com',\r\n       *   path: '/path/to/file.html',\r\n       *   query: 'a=1&b=2',\r\n       *   hash: null\r\n       * }\r\n       * ```\r\n       * @private\r\n       */\r\n      parseUri: NGN.privateconst(uri => {\r\n        let part = uri.match(this.UrlPattern)\r\n        let protocol\r\n        /* node-only */\r\n        protocol = 'http'\r\n        /* end-node-only */\r\n        /* browser-only */\r\n        protocol = window.location.protocol.replace(':', '').toLowerCase()\r\n        /* end-browser-only */\r\n        let url = {\r\n          protocol: NGN.coalesce(part[2], protocol),\r\n          hostname: NGN.coalesce(part[4], hostname),\r\n          path: NGN.coalesceb(part[5], '/'),\r\n          query: NGN.coalesceb(part[7]),\r\n          hash: NGN.coalesceb(part[9])\r\n        }\r\n\r\n        // URL contains a username/password.\r\n        if (url.hostname.indexOf('@') > 0) {\r\n          let credentials = uri.match(/^.*\\/{1,2}(.*):(.*)@/i)\r\n\r\n          url.hostname = url.hostname.split('@').pop()\r\n\r\n          this.user = credentials[1]\r\n          this.secret = credentials[2]\r\n          this.applyAuthorizationHeader()\r\n        }\r\n\r\n        url.port = NGN.coalesce(url.hostname.match(/:([0-9]{1,6})/), url.protocol === 'https' ? 443 : 80)\r\n\r\n        if (url.hostname.indexOf(':') > 0) {\r\n          url.hostname = url.hostname.split(':')[0]\r\n        }\r\n\r\n        if (url.path.charAt(0) !== '/') {\r\n          url.path = `/${url.path}`\r\n        }\r\n\r\n        return url\r\n      }),\r\n\r\n      uriParts: NGN.private(null),\r\n\r\n      /**\r\n       * @cfgproperty {Number} [maxRedirects=10]\r\n       * Set the maximum number of redirects. There is a hard-cap of 25\r\n       * redirects to prevent cyclic requests (endless loop).\r\n       */\r\n      maximumRedirects: NGN.private(10),\r\n      redirectAttempts: NGN.private(0),\r\n\r\n      prepareBody: NGN.private(() => {\r\n        // Request body management\r\n        if (this.requestbody !== null) {\r\n          if (this.headers === null) {\r\n            this.headers = {}\r\n          }\r\n\r\n          let contentType = NGN.coalesceb(this.headers['Content-Type'], this.headers['content-type'], this.headers['Content-type'])\r\n\r\n          if (typeof this.requestbody === 'object') {\r\n            if (NGN.objectHasExactly(this.requestbody, 'form')) {\r\n              let form = this.requestbody.form\r\n              let keys = Object.keys(form)\r\n              let dataString = []\r\n\r\n              for (let i = 0; i < keys.length; i++) {\r\n                if (NGN.isFn(form[keys[i]])) {\r\n                  throw new Error('Invalid form data. Form data cannot be a complex data format such as an object or function.')\r\n                } else if (typeof form[keys[i]] === 'object') {\r\n                  dataString.push(`${keys[i]}=${encodeURIComponent(JSON.stringify(form[keys[i]]))}`)\r\n                } else {\r\n                  dataString.push(`${keys[i]}:${encodeURIComponent(form[keys[i]])}`)\r\n                }\r\n              }\r\n\r\n              this.requestbody = dataString.join('&')\r\n            } else {\r\n              this.requestbody = JSON.stringify(this.requestbody).trim()\r\n              this.setHeader('Content-Length', this.requestbody.length, false)\r\n              this.setHeader('Content-Type', NGN.coalesceb(contentType, 'application/json'), false)\r\n            }\r\n          }\r\n\r\n          if (typeof this.requestbody === 'string') {\r\n            if (contentType !== null) {\r\n              // Check for form data\r\n              let match = /([^=]+)=([^&]+)/.exec(this.requestbody)\r\n\r\n              if (match !== null && this.requestbody.trim().substr(0, 5).toLowerCase() !== 'data:' && this.requestbody.trim().substr(0, 1).toLowerCase() !== '<') {\r\n                this.setHeader('Content-Type', 'application/x-www-form-urlencoded', false)\r\n              } else {\r\n                this.setHeader('Content-Type', 'text/plain')\r\n\r\n                if (this.requestbody.trim().substr(0, 5).toLowerCase() === 'data:') {\r\n                  // Crude Data URL mimetype detection\r\n                  match = /^data:(.*);/gi.exec(this.requestbody.trim())\r\n\r\n                  if (match !== null) {\r\n                    this.setHeader('Content-Type', match[1])\r\n                  }\r\n                } else if (/^<\\?xml.*/gi.test(this.requestbody.trim())) {\r\n                  // Crude XML Detection\r\n                  this.setHeader('Content-Type', 'application/xml')\r\n                } else if (/^<html.*/gi.test(this.requestbody.trim())) {\r\n                  // Crude HTML Detection\r\n                  this.setHeader('Content-Type', 'text/html')\r\n                }\r\n              }\r\n            }\r\n\r\n            this.setHeader('Content-Type', this.requestbody.length, false)\r\n          } else {\r\n            NGN.WARN('NET.Request.body', `The request body must cannot be ${typeof this.requestbody}. Please provide a string, object, or binary value for the body.`)\r\n          }\r\n        }\r\n      })\r\n    })\r\n\r\n    if (cfg.maxRedirects) {\r\n      this.maxRedirects = cfg.maxRedirects\r\n    }\r\n\r\n    this.url = cfg.url\r\n    this.method = NGN.coalesceb(cfg.method, 'GET')\r\n\r\n    this.prepareBody()\r\n\r\n    // Apply authorization if applicable\r\n    if (NGN.coalesce(this.user, this.secret, this.bearerAccessToken) !== null) {\r\n      this.applyAuthorizationHeader()\r\n    }\r\n  }\r\n\r\n  get maxRedirects () {\r\n    return this.maximumRedirects\r\n  }\r\n\r\n  set maxRedirects (value) {\r\n    if (value > 25) {\r\n      value = 25\r\n    }\r\n\r\n    if (value < 0) {\r\n      value = 0\r\n    }\r\n\r\n    this.maximumRedirects = value\r\n  }\r\n\r\n  /**\r\n   * @property {string} protocol\r\n   * The protocol used to make the request.\r\n   * @readonly\r\n   */\r\n  get protocol () {\r\n    return NGN.coalesce(this.uriParts.protocol, 'http')\r\n  }\r\n\r\n  /**\r\n   * @property {string} host\r\n   * The hostname/domain of the request.\r\n   */\r\n  get host () {\r\n    return NGN.coalesce(this.uriParts.hostname)\r\n  }\r\n\r\n  get hostname () {\r\n    return this.host\r\n  }\r\n\r\n  /**\r\n   * @property {number} port\r\n   * The port of the remote host.\r\n   */\r\n  get port () {\r\n    return this.uriParts.port\r\n  }\r\n\r\n  /**\r\n   * @property {string} path\r\n   * The pathname of the URL.\r\n   */\r\n  get path () {\r\n    return NGN.coalesce(this.uriParts.path, '/')\r\n  }\r\n\r\n  /**\r\n   * @property {string} query\r\n   * The raw query string of the URI. To retrieve a key/value list,\r\n   * use #queryParameters instead.\r\n   */\r\n  get query () {\r\n    return NGN.coalesce(this.uriParts.query, '')\r\n  }\r\n\r\n  /**\r\n   * @property {object} queryParameters\r\n   * Returns a key/value object containing the URL query parameters of the\r\n   * request, as defined in the #url. The paramter values (represented as keys\r\n   * in this object) may be modified, but not removed (use removeQueryParameter\r\n   * to delete a query parameter). No new query parameters can be added (use\r\n   * setQueryParameter instead).\r\n   * @readonly\r\n   */\r\n  get queryParameters () {\r\n    let params = this.query.split('&')\r\n    let resultSet = {}\r\n\r\n    for (let i = 0; i < params.length; i++) {\r\n      let keypair = params[i].split('=')\r\n      let attr = `__qp__${keypair[0]}__qp__`\r\n\r\n      Object.defineProperty(resultSet, attr, {\r\n        enumerable: false,\r\n        configurable: false,\r\n        writable: true,\r\n        value: NGN.coalesceb(keypair[1])\r\n      })\r\n\r\n      Object.defineProperty(resultSet, keypair[0], {\r\n        enumerable: true,\r\n        configurable: false,\r\n        get: () => { return resultSet[attr] },\r\n        set: (value) => {\r\n          resultSet[attr] = value\r\n          this.setQueryParameter(keypair[0], value, true)\r\n        }\r\n      })\r\n    }\r\n\r\n    return resultSet\r\n  }\r\n\r\n  /**\r\n   * @property hash\r\n   * The hash part of the URL (i.e. everything after the trailing `#`).\r\n   */\r\n  get hash () {\r\n    return NGN.coalesce(this.uriParts.hash, '')\r\n  }\r\n\r\n  /**\r\n   * @property {string} url\r\n   * The URL where the request will be sent.\r\n   */\r\n  get url () {\r\n    return this.uri\r\n  }\r\n\r\n  set url (value) {\r\n    if (NGN.coalesceb(value) === null) {\r\n      NGN.WARN('NET.Request.url', 'A blank URL was identified for a request.')\r\n    }\r\n\r\n    // If a relative URL is provided in a browser context, prepend\r\n    // the current browser location to the URI.\r\n    if (/^.*\\:\\/{2}/i.exec(value) === null && /^\\.{1,2}\\/.*/.exec(value) !== null && NGN.global.hasOwnProperty('location')) {\r\n      let loc = NGN.global.location\r\n      let href = `${loc.host}${loc.pathname}`\r\n\r\n      href = href.split('/')\r\n\r\n      if (href[href.length - 1].indexOf('.') >= 0) {\r\n        href.pop()\r\n      }\r\n\r\n      href = href.join('/')\r\n      href = href.substring(0, href.lastIndexOf('/') + 1)\r\n\r\n      value = `${NGN.global.location.protocol}//${href}/${value}`.replace(/\\/{2,1000000}/i, '/')\r\n    }\r\n\r\n    this.uri = normalizeUrl(value.trim())\r\n    this.uriParts = this.parseUri(this.uri)\r\n  }\r\n\r\n  get method () {\r\n    return this.httpmethod\r\n  }\r\n\r\n  set method (value) {\r\n    if (this.httpmethod === value) {\r\n      return\r\n    }\r\n\r\n    if (NGN.coalesceb(value) === null) {\r\n      NGN.WARN('NET.Request.method', 'No HTTP method specified.')\r\n    }\r\n\r\n    value = value.trim().toUpperCase()\r\n\r\n    if (HttpMethods.indexOf(value) < 0) {\r\n      NGN.WARN('NET.Request.method', `A non-standard HTTP method was recognized in a request: ${value}.`)\r\n    }\r\n\r\n    this.httpmethod = value\r\n  }\r\n\r\n  get body () {\r\n    return this.requestbody\r\n  }\r\n\r\n  set body (value) {\r\n    this.requestbody = value\r\n    this.prepareBody()\r\n  }\r\n\r\n  /**\r\n   * @property {boolean} crossOriginRequest\r\n   * Indicates the request will be made to a domain outside of the\r\n   * one hosting the request.\r\n   */\r\n  get crossOriginRequest () {\r\n    return this.isCrossOrigin(this.uri)\r\n  }\r\n\r\n  /**\r\n   * @property {string} username\r\n   * The username that will be used in any basic authentication operations.\r\n   */\r\n  get username () {\r\n    return NGN.coalesce(this.user)\r\n  }\r\n\r\n  set username (user) {\r\n    user = NGN.coalesceb(user)\r\n\r\n    if (this.user !== user) {\r\n      this.user = user\r\n\r\n      if (NGN.coalesceb(this.secret) !== null) {\r\n        this.applyAuthorizationHeader()\r\n      }\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @property {string} password\r\n   * It is possible to set a password for any basic authentication operations,\r\n   * but it is not possible to read a password.\r\n   * @writeonly\r\n   */\r\n  set password (secret) {\r\n    secret = NGN.coalesceb(secret)\r\n\r\n    if (this.secret !== secret) {\r\n      this.secret = secret\r\n\r\n      if (NGN.coalesceb(this.user) !== null) {\r\n        this.applyAuthorizationHeader()\r\n      }\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @property {string} accessToken\r\n   * Supply a bearer access token for basic authenticaiton operations.\r\n   * @writeonly\r\n   */\r\n  set accessToken (token) {\r\n    token = NGN.coalesceb(token)\r\n\r\n    if (this.bearerAccessToken !== token) {\r\n      this.bearerAccessToken = token\r\n      this.applyAuthorizationHeader()\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method setHeader\r\n   * Add a header to the request.\r\n   * @param {string} header\r\n   * The name of the header.\r\n   * @param {string} value\r\n   * Value of the header.\r\n   * @param {Boolean} [overwriteExisting=true]\r\n   * If the header already exists, setting this to `false` will prevent\r\n   * the original header from being overwritten.\r\n   */\r\n  setHeader (key, value, overwriteExisting = true) {\r\n    key = key.replace(/'|\"/gi, '').toLowerCase()\r\n\r\n    if (this.headers === null || this.headers[key] === undefined || overwriteExisting) {\r\n      if (this.headers === null) {\r\n        this.headers = {}\r\n      }\r\n\r\n      this.headers[key] = value\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method getHeader\r\n   * @param  {string} header\r\n   * The name of the header to retrieve.\r\n   * @return {string}\r\n   * Returns the current value of the specified header.\r\n   */\r\n  getHeader (key) {\r\n    if (this.headers === null) {\r\n      return undefined\r\n    }\r\n\r\n    if (!this.headers.hasOwnProperty(key.toLowerCase())) {\r\n      return undefined\r\n    }\r\n\r\n    return this.headers[key.toLowerCase()]\r\n  }\r\n\r\n  /**\r\n   * @method removeHeader\r\n   * Removes a header from the request. Nothing happens if the header does\r\n   * not exist.\r\n   * @param  {string} header\r\n   * The header to remove.\r\n   */\r\n  removeHeader (key) {\r\n    if (this.headers !== null) {\r\n      delete this.headers[key.toLowerCase()]\r\n      delete this.headers[key]\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method setQueryParameter\r\n   * Add a query parameter to the request.\r\n   * @param {string} parameter\r\n   * The name of the parameter.\r\n   * @param {string} value\r\n   * Value of the parameter. The value is automatically URL encoded. If the\r\n   * value is null, only the key will be added to the URL (ex: `http://domain.com/page.html?key`)\r\n   * @param {Boolean} [overwriteExisting=true]\r\n   * If the parameter already exists, setting this to `false` will prevent\r\n   * the original parameter from being overwritten.\r\n   */\r\n  setQueryParameter (key, value, overwriteExisting = true) {\r\n    let re = new RegExp(\"^.*(\\\\?|&)(\" + key + \".*)(&.*)$|^.*(\\\\?|&)(\" + key + \".*)$\", 'i') // eslint-disable-line quotes\r\n    let exists = (re.exec(this.uri) !== null)\r\n    let match\r\n\r\n    if (exists) {\r\n      if (!overwriteExisting) {\r\n        return\r\n      }\r\n\r\n      match = re.exec(this.uri)\r\n\r\n      if (match !== null) {\r\n        this.url = this.uri.replace(`${NGN.coalesceb(match[5], match[2])}`, `${key}${value !== null ? '=' + encodeURIComponent(value) : ''}`)\r\n      }\r\n    } else {\r\n      this.url = `${this.uri}${this.query.length === 0 ? '?' : '&'}${key}${value !== null ? '=' + encodeURIComponent(value) : ''}`\r\n    }\r\n  }\r\n\r\n  /**\r\n   * @method removeQueryParameter\r\n   * Remove a query parameter from the request URI.\r\n   * @param {string} key\r\n   */\r\n  removeQueryParameter (key) {\r\n    this.url = this.uri.replace(new RegExp(`${key}=(.[^&]+)|\\\\?${key}|&${key}`, 'gi'), '')\r\n  }\r\n\r\n  startMonitor () {\r\n    if (this.timer === null) {\r\n      this.timer = setTimeout(() => {\r\n        throw new Error('Timed out retrieving ' + this.url)\r\n      }, this.timeout)\r\n    }\r\n  }\r\n\r\n  stopMonitor () {\r\n    clearTimeout(this.timer)\r\n    this.timer = null\r\n  }\r\n\r\n  /**\r\n   * @method send\r\n   * Send the request.\r\n   * @param {Function} callback\r\n   * The callback is executed when the request is complete.\r\n   * @param {Object} callback.response\r\n   * The response object returned by the server.\r\n   */\r\n  send (callback) {\r\n    let body = this.body\r\n\r\n    // Disable body when safe methods are enforced.\r\n    if (NGN.coalesce(body)) {\r\n      if (this.enforceMethodSafety && 'OPTIONS|HEAD|GET'.indexOf(this.method) >= 0) {\r\n        body = null\r\n      }\r\n    }\r\n\r\n    /* node-only */\r\n    // Run request in Node-like environments\r\n    // Support local file system retrieval in node-like environments.\r\n    // This short-circuits the request and reads the file system instead.\r\n    if (this.protocol === 'file') {\r\n      if (!NGN.isFn(callback)) {\r\n        throw new Error('A callback is required when retrieving system files in a node-like environment.')\r\n      }\r\n\r\n      let response = {\r\n        status: require('fs').existsSync(this.uri.replace('file://', '')) ? 200 : 400\r\n      }\r\n\r\n      response.responseText = response.status === 200 ? require('fs').readFileSync(this.uri.replace('file://', '')).toString() : 'File does not exist or could not be found.'\r\n\r\n      return callback(response)\r\n    }\r\n\r\n    const http = this.protocol === 'https' ? require('https') : require('http')\r\n\r\n    let params = NGN.coalesceb(this.query)\r\n    let reqOptions = {\r\n      hostname: this.hostname,\r\n      port: this.port,\r\n      method: this.method,\r\n      headers: this.headers,\r\n      path: this.path\r\n    }\r\n\r\n    if (params !== null) {\r\n      reqOptions.path = `${this.path}?${params}`\r\n    }\r\n\r\n    const req = http.request(reqOptions, (response) => {\r\n      response.setEncoding('utf8')\r\n\r\n      let body = ''\r\n      response.on('data', (chunk) => {\r\n        body += chunk\r\n      })\r\n\r\n      response.on('end', () => {\r\n        switch (response.statusCode) {\r\n          case 301:\r\n          case 302:\r\n          case 307:\r\n          case 308:\r\n            if (this.redirectAttempts > this.maxRedirects) {\r\n              this.redirectAttempts = 0\r\n\r\n              this.stopMonitor()\r\n\r\n              return callback({ // eslint-disable-line standard/no-callback-literal\r\n                status: 500,\r\n                statusText: 'Too many redirects',\r\n                responseText: 'Too many redirects',\r\n                responseXML: 'Too many redirects',\r\n                readyState: 4\r\n              })\r\n            }\r\n\r\n            if (response.headers.location === undefined) {\r\n              this.stopMonitor()\r\n\r\n              return callback({ // eslint-disable-line standard/no-callback-literal\r\n                status: 502,\r\n                statusText: 'Bad Gateway',\r\n                responseText: 'Bad Gateway',\r\n                responseXML: 'Bad Gateway',\r\n                readyState: 4\r\n              })\r\n            }\r\n\r\n            this.redirectAttempts++\r\n            this.url = response.headers.location\r\n\r\n            return this.send(callback)\r\n\r\n          default:\r\n            this.stopMonitor()\r\n\r\n            return callback({ // eslint-disable-line standard/no-callback-literal\r\n              status: response.statusCode,\r\n              statusText: NGN.coalesce(response.statusText),\r\n              responseText: body,\r\n              responseXML: body,\r\n              readyState: 4\r\n            })\r\n        }\r\n      })\r\n    })\r\n\r\n    req.on('error', (err) => {\r\n      this.stopMonitor()\r\n\r\n      if (NGN.isFn(callback)) {\r\n        callback({ // eslint-disable-line standard/no-callback-literal\r\n          status: 400,\r\n          statusText: err.message,\r\n          responseText: err.message,\r\n          responseXML: err.message,\r\n          readyState: 0\r\n        })\r\n      } else {\r\n        throw err\r\n      }\r\n    })\r\n\r\n    this.startMonitor()\r\n\r\n    if (this.body) {\r\n      req.write(this.body)\r\n    }\r\n\r\n    req.end()\r\n    /* end-node-only */\r\n    /* browser-only */\r\n    let xhr = new XMLHttpRequest()\r\n    let responded = false\r\n    let me = this\r\n\r\n    // Apply readystate change handler\r\n    xhr.onreadystatechange = function () {\r\n      if (responded) {\r\n        return\r\n      }\r\n\r\n      if (xhr.readyState === XMLHttpRequest.DONE) {\r\n        responded = true\r\n\r\n        if (xhr.status === 0) {\r\n          NGN.WARN(`Request Error: ${me.method} ${me.url} (likely a CORS issue).`)\r\n        }\r\n\r\n        if (NGN.isFn(callback)) {\r\n          callback(xhr)\r\n        }\r\n      }\r\n    }\r\n\r\n    // Apply error handler\r\n    xhr.onerror = function (e) {\r\n      NGN.WARN('NET.error', e)\r\n\r\n      if (!responded && NGN.isFn(callback)) {\r\n        callback(xhr)\r\n      }\r\n\r\n      responded = true\r\n    }\r\n\r\n    xhr.ontimeout = function (e) {\r\n      responded = true\r\n      callback(xhr)\r\n    }\r\n\r\n    xhr.timeout = this.timeout\r\n\r\n    // Open the request\r\n    xhr.open(this.method, this.url, true)\r\n\r\n    // Apply withCredentials\r\n    xhr.withCredentials = this.withCredentials\r\n\r\n    // Apply Request Headers\r\n    if (this.headers !== null) {\r\n      let headers = Object.keys(this.headers)\r\n      for (let i = 0; i < headers.length; i++) {\r\n        xhr.setRequestHeader(headers[i], this.headers[headers[i]])\r\n      }\r\n    }\r\n\r\n    // Write the body (which may be null) & send the request\r\n    xhr.send(body)\r\n    /* end-browser-only */\r\n  }\r\n}",
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 11,
+    "column": 15
+  },
+  "end": {
+    "line": 901,
+    "column": 1
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": "net/Request.js",
+  "extends": null,
+  "configuration": {
+    "url": {
+      "type": "property",
+      "label": "url",
+      "description": "The complete URL for the request, including query parameters.",
+      "code": "uri: NGN.private(null)",
+      "start": {
+        "line": 29,
+        "column": 6
+      },
+      "end": {
+        "line": 29,
+        "column": 28
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "string",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "method": {
+      "type": "property",
+      "label": "method",
+      "description": "The HTTP method to invoke when the request is sent. The standard\nRFC 2616 HTTP methods include:\n\n- OPTIONS\n- HEAD\n- GET\n- POST\n- PUT\n- DELETE\n- TRACE\n- CONNECT\n\nThere are many additional non-standard methods some remote hosts\nwill accept, including `PATCH`, `COPY`, `LINK`, `UNLINK`, `PURGE`,\n`LOCK`, `UNLOCK`, `VIEW`, and many others. If the remote host\nsupports these methods, they may be used in an NGN.NET.Request.\nNon-standard methods will not be prevented, but NGN will trigger\na warning event if a non-standard request is created.",
+      "code": "httpmethod: NGN.private(null)",
+      "start": {
+        "line": 52,
+        "column": 6
+      },
+      "end": {
+        "line": 52,
+        "column": 35
+      },
+      "flags": [],
+      "authors": [],
+      "default": "GET",
+      "datatype": "string",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "enforceMethodSafety": {
+      "type": "property",
+      "label": "enforceMethodSafety",
+      "description": "According to [RFC 2616],\nsome HTTP methods are considered idempotent (safe). These methods\nshould have no significance to data (i.e. read-only). For example,\n`OPTIONS`, `HEAD`, and `GET` are all idempotent. By default, NGN.NET\nloosely enforces idempotence by ignoring the #body when making a\nrequest. While it is not advised, nor officially supported, NGN.NET can\ntechnically ignore method safety, allowing a request body to be\nsent to a remote server. Set this configuration to `false` to\nprevent NGN.NET from enforcing idempotence/safety.",
+      "code": "enforceMethodSafety: NGN.private(NGN.coalesce(cfg.enforceMethodSafety, cfg.enforcemethodsafety, true))",
+      "start": {
+        "line": 66,
+        "column": 6
+      },
+      "end": {
+        "line": 66,
+        "column": 108
+      },
+      "flags": [],
+      "authors": [],
+      "default": "true",
+      "datatype": "boolean",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "headers": {
+      "type": "property",
+      "label": "headers",
+      "description": "Optionally supply custom headers for the request. Most standard\nheaders will be applied automatically , such\nas `Content-Type`, `Content-Length`, and `Authorization`.\nIn Node-like environments, a `User-Agent` will be applied containing\nthe `hostname` of the system making the request. Any custom headers\nsupplied will override headers managed by NGN.NET.",
+      "code": "headers: NGN.public(NGN.coalesceb(cfg.headers))",
+      "start": {
+        "line": 77,
+        "column": 6
+      },
+      "end": {
+        "line": 77,
+        "column": 53
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "object",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": false
+    },
+    "body": {
+      "type": "property",
+      "label": "body",
+      "description": "The body configuration supports text, an object, or a data URL or\nbinary content. **For multi-part form data , use\nthe #files configuration _instead_ of this attribute.**\n\nIt is also possible to construct a simple form submission\n(x-www-form-urlencoded) from a specially formatted key/value object\nconforming to the following syntax:\n\n```json\n{\nform: {\nform_field_1: \"value\",\nform_field_2: \"value\",\nform_field_3: \"value\",\n}\n}\n```\nThe object above will be automatically converted & url-encoded as:\n\n```js\nform_field_1=value&form_field_2=value&form_field_3=value\n```\n\nThe appropriate request headers are automatically applied.",
+      "code": "requestbody: NGN.public(NGN.coalesce(cfg.body))",
+      "start": {
+        "line": 106,
+        "column": 6
+      },
+      "end": {
+        "line": 106,
+        "column": 53
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "object|string|binary",
+      "readable": false,
+      "writable": false,
+      "configuration": true,
+      "private": false
+    },
+    "username": {
+      "type": "property",
+      "label": "username",
+      "description": "A username to authenticate the request with .",
+      "code": "user: NGN.private(NGN.coalesceb(cfg.username))",
+      "start": {
+        "line": 112,
+        "column": 6
+      },
+      "end": {
+        "line": 112,
+        "column": 52
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "string",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "password": {
+      "type": "property",
+      "label": "password",
+      "description": "A password to authenticate the request with .",
+      "code": "secret: NGN.private(NGN.coalesceb(cfg.password))",
+      "start": {
+        "line": 119,
+        "column": 6
+      },
+      "end": {
+        "line": 119,
+        "column": 54
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "string",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "accessToken": {
+      "type": "property",
+      "label": "accessToken",
+      "description": "An access token to authenticate the request with .\nIf this is configured, it will override any basic auth settings.",
+      "code": "bearerAccessToken: NGN.private(NGN.coalesceb(cfg.accessToken))",
+      "start": {
+        "line": 126,
+        "column": 6
+      },
+      "end": {
+        "line": 126,
+        "column": 68
+      },
+      "flags": [],
+      "authors": [],
+      "default": null,
+      "datatype": "string",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "withCredentials": {
+      "type": "property",
+      "label": "withCredentials",
+      "description": "Indicates whether or not cross-site `Access-Control` requests should\nbe made using credentials such as cookies, authorization headers or\nTLS client certificates. Setting `withCredentials` has no effect on\nsame-site requests.\n\nIn addition, this flag is also used to indicate when cookies are to\nbe ignored in the response. The default is `false`. XMLHttpRequest\nfrom a different domain cannot set cookie values for their own\ndomain unless `withCredentials` is set to true before making the\nrequest. The third-party cookies obtained by setting `withCredentials`\nto true will still honor same-origin policy and hence can not be\naccessed by the requesting script through\n[document.cookie]\nor from response headers.",
+      "code": "withCredentials: NGN.private(NGN.coalesce(cfg.withCredentials, false))",
+      "start": {
+        "line": 145,
+        "column": 6
+      },
+      "end": {
+        "line": 145,
+        "column": 76
+      },
+      "flags": [],
+      "authors": [],
+      "default": "false",
+      "datatype": "boolean",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "timeout": {
+      "type": "property",
+      "label": "timeout",
+      "description": "The number of milliseconds to wait before considering the request to\nhave timed out. Defaults to `30000` .",
+      "code": "timeout: NGN.public(NGN.coalesce(cfg.timeout, 30000))",
+      "start": {
+        "line": 152,
+        "column": 6
+      },
+      "end": {
+        "line": 152,
+        "column": 59
+      },
+      "flags": [],
+      "authors": [],
+      "default": "30000",
+      "datatype": "number",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": false
+    },
+    "maxRedirects": {
+      "type": "property",
+      "label": "maxRedirects",
+      "description": "Set the maximum number of redirects. There is a hard-cap of 25\nredirects to prevent cyclic requests .",
+      "code": "maximumRedirects: NGN.private(10)",
+      "start": {
+        "line": 276,
+        "column": 6
+      },
+      "end": {
+        "line": 276,
+        "column": 39
+      },
+      "flags": [],
+      "authors": [],
+      "default": "10",
+      "datatype": "number",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    }
+  },
+  "properties": {
+    "UrlPattern": {
+      "type": "property",
+      "label": "UrlPattern",
+      "description": null,
+      "code": "UrlPattern: NGN.privateconst(new RegExp('^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\\\?([^#]*))?(#(.*))?'))",
+      "start": {
+        "line": 23,
+        "column": 6
+      },
+      "end": {
+        "line": 23,
+        "column": 108
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "url": {
+      "type": "property",
+      "label": "url",
+      "description": null,
+      "code": "set url (value) {\r\n    if (NGN.coalesceb(value) === null) {\r\n      NGN.WARN('NET.Request.url', 'A blank URL was identified for a request.')\r\n    }\r\n\r\n    // If a relative URL is provided in a browser context, prepend\r\n    // the current browser location to the URI.\r\n    if (/^.*\\:\\/{2}/i.exec(value) === null && /^\\.{1,2}\\/.*/.exec(value) !== null && NGN.global.hasOwnProperty('location')) {\r\n      let loc = NGN.global.location\r\n      let href = `${loc.host}${loc.pathname}`\r\n\r\n      href = href.split('/')\r\n\r\n      if (href[href.length - 1].indexOf('.') >= 0) {\r\n        href.pop()\r\n      }\r\n\r\n      href = href.join('/')\r\n      href = href.substring(0, href.lastIndexOf('/') + 1)\r\n\r\n      value = `${NGN.global.location.protocol}//${href}/${value}`.replace(/\\/{2,1000000}/i, '/')\r\n    }\r\n\r\n    this.uri = normalizeUrl(value.trim())\r\n    this.uriParts = this.parseUri(this.uri)\r\n  }",
+      "start": {
+        "line": 478,
+        "column": 2
+      },
+      "end": {
+        "line": 503,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "username": {
+      "type": "property",
+      "label": "username",
+      "description": null,
+      "code": "set username (user) {\r\n    user = NGN.coalesceb(user)\r\n\r\n    if (this.user !== user) {\r\n      this.user = user\r\n\r\n      if (NGN.coalesceb(this.secret) !== null) {\r\n        this.applyAuthorizationHeader()\r\n      }\r\n    }\r\n  }",
+      "start": {
+        "line": 553,
+        "column": 2
+      },
+      "end": {
+        "line": 563,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "password": {
+      "type": "property",
+      "label": "password",
+      "description": null,
+      "code": "set password (secret) {\r\n    secret = NGN.coalesceb(secret)\r\n\r\n    if (this.secret !== secret) {\r\n      this.secret = secret\r\n\r\n      if (NGN.coalesceb(this.user) !== null) {\r\n        this.applyAuthorizationHeader()\r\n      }\r\n    }\r\n  }",
+      "start": {
+        "line": 571,
+        "column": 2
+      },
+      "end": {
+        "line": 581,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "accessToken": {
+      "type": "property",
+      "label": "accessToken",
+      "description": null,
+      "code": "set accessToken (token) {\r\n    token = NGN.coalesceb(token)\r\n\r\n    if (this.bearerAccessToken !== token) {\r\n      this.bearerAccessToken = token\r\n      this.applyAuthorizationHeader()\r\n    }\r\n  }",
+      "start": {
+        "line": 588,
+        "column": 2
+      },
+      "end": {
+        "line": 595,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "withCredentials": {
+      "type": "property",
+      "label": "withCredentials",
+      "description": "Indicates whether or not cross-site `Access-Control` requests should\nbe made using credentials such as cookies, authorization headers or\nTLS client certificates. Setting `withCredentials` has no effect on\nsame-site requests.\n\nIn addition, this flag is also used to indicate when cookies are to\nbe ignored in the response. The default is `false`. XMLHttpRequest\nfrom a different domain cannot set cookie values for their own\ndomain unless `withCredentials` is set to true before making the\nrequest. The third-party cookies obtained by setting `withCredentials`\nto true will still honor same-origin policy and hence can not be\naccessed by the requesting script through\n[document.cookie]\nor from response headers.",
+      "code": "withCredentials: NGN.private(NGN.coalesce(cfg.withCredentials, false))",
+      "start": {
+        "line": 145,
+        "column": 6
+      },
+      "end": {
+        "line": 145,
+        "column": 76
+      },
+      "flags": [],
+      "authors": [],
+      "default": "false",
+      "datatype": "boolean",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": true
+    },
+    "timeout": {
+      "type": "property",
+      "label": "timeout",
+      "description": "The number of milliseconds to wait before considering the request to\nhave timed out. Defaults to `30000` .",
+      "code": "timeout: NGN.public(NGN.coalesce(cfg.timeout, 30000))",
+      "start": {
+        "line": 152,
+        "column": 6
+      },
+      "end": {
+        "line": 152,
+        "column": 59
+      },
+      "flags": [],
+      "authors": [],
+      "default": "30000",
+      "datatype": "number",
+      "readable": true,
+      "writable": false,
+      "configuration": true,
+      "private": false
+    },
+    "timer": {
+      "type": "property",
+      "label": "timer",
+      "description": "A placeholder for a timeout monitor.",
+      "code": "timer: NGN.private(null)",
+      "start": {
+        "line": 159,
+        "column": 6
+      },
+      "end": {
+        "line": 159,
+        "column": 30
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "isCrossOrigin": {
+      "type": "property",
+      "label": "isCrossOrigin",
+      "description": "Determine if accessing a URL is considered a cross origin request.\r\n      \r\n      The URL to identify as a COR.",
+      "code": "isCrossOrigin: NGN.privateconst(function (url) {\r\n        /* node-only */\r\n        if (networkInterfaces.indexOf(this.host) < 0) {\r\n          return true\r\n        }\r\n        /* end-node-only */\r\n\r\n        return this.host !== hostname // eslint-disable-line no-undef\r\n      })",
+      "start": {
+        "line": 169,
+        "column": 6
+      },
+      "end": {
+        "line": 177,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "applyAuthorizationHeader": {
+      "type": "property",
+      "label": "applyAuthorizationHeader",
+      "description": "Generates and applies the authorization header for the request,\r\n      based on the presence of #username, #password, or #accessToken.",
+      "code": "applyAuthorizationHeader: NGN.privateconst(() => {\r\n        if (NGN.coalesceb(this.bearerAccessToken) !== null) {\r\n          this.setHeader('Authorization', `Bearer ${this.bearerAccessToken}`, true)\r\n        } else if (NGN.coalesceb(this.user) && NGN.coalesceb(this.secret)) {\r\n          this.setHeader('Authorization', this.basicAuthToken(this.user, this.secret), true)\r\n        }\r\n      })",
+      "start": {
+        "line": 185,
+        "column": 6
+      },
+      "end": {
+        "line": 191,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "basicAuthToken": {
+      "type": "property",
+      "label": "basicAuthToken",
+      "description": "Generates a basic authentication token from a username and password.",
+      "code": "basicAuthToken: NGN.privateconst((user, secret) => {\r\n        // Binary to base64-ascii conversions\r\n        /* node-only */\r\n        return 'Basic ' + Buffer.from(`${user}:${secret}`, 'binary').toString('base64')\r\n        /* end-node-only */\r\n        /* browser-only */\r\n        return 'Basic ' + NGN.global.btoa(`${user}:${secret}`) // eslint-disable-line no-unreachable\r\n        /* end-browser-only */\r\n      })",
+      "start": {
+        "line": 199,
+        "column": 6
+      },
+      "end": {
+        "line": 207,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "parseUri": {
+      "type": "property",
+      "label": "parseUri",
+      "description": "Parses the URI into composable parts.\r\n      \r\n      The URI/URL to parse.\r\n      \r\n      Returns a key/value object:\r\n      \n      ```js\r\n      {\r\n        protocol: 'http',\r\n        hostname: 'domain.com',\r\n        path: '/path/to/file.html',\r\n        query: 'a=1&b=2',\r\n        hash: null\r\n      }\r\n      ```",
+      "code": "parseUri: NGN.privateconst(uri => {\r\n        let part = uri.match(this.UrlPattern)\r\n        let protocol\r\n        /* node-only */\r\n        protocol = 'http'\r\n        /* end-node-only */\r\n        /* browser-only */\r\n        protocol = window.location.protocol.replace(':', '').toLowerCase()\r\n        /* end-browser-only */\r\n        let url = {\r\n          protocol: NGN.coalesce(part[2], protocol),\r\n          hostname: NGN.coalesce(part[4], hostname),\r\n          path: NGN.coalesceb(part[5], '/'),\r\n          query: NGN.coalesceb(part[7]),\r\n          hash: NGN.coalesceb(part[9])\r\n        }\r\n\r\n        // URL contains a username/password.\r\n        if (url.hostname.indexOf('@') > 0) {\r\n          let credentials = uri.match(/^.*\\/{1,2}(.*):(.*)@/i)\r\n\r\n          url.hostname = url.hostname.split('@').pop()\r\n\r\n          this.user = credentials[1]\r\n          this.secret = credentials[2]\r\n          this.applyAuthorizationHeader()\r\n        }\r\n\r\n        url.port = NGN.coalesce(url.hostname.match(/:([0-9]{1,6})/), url.protocol === 'https' ? 443 : 80)\r\n\r\n        if (url.hostname.indexOf(':') > 0) {\r\n          url.hostname = url.hostname.split(':')[0]\r\n        }\r\n\r\n        if (url.path.charAt(0) !== '/') {\r\n          url.path = `/${url.path}`\r\n        }\r\n\r\n        return url\r\n      })",
+      "start": {
+        "line": 228,
+        "column": 6
+      },
+      "end": {
+        "line": 267,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": true
+    },
+    "uriParts": {
+      "type": "property",
+      "label": "uriParts",
+      "description": null,
+      "code": "uriParts: NGN.private(null)",
+      "start": {
+        "line": 269,
+        "column": 6
+      },
+      "end": {
+        "line": 269,
+        "column": 33
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "maxRedirects": {
+      "type": "property",
+      "label": "maxRedirects",
+      "description": null,
+      "code": "set maxRedirects (value) {\r\n    if (value > 25) {\r\n      value = 25\r\n    }\r\n\r\n    if (value < 0) {\r\n      value = 0\r\n    }\r\n\r\n    this.maximumRedirects = value\r\n  }",
+      "start": {
+        "line": 366,
+        "column": 2
+      },
+      "end": {
+        "line": 376,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "redirectAttempts": {
+      "type": "property",
+      "label": "redirectAttempts",
+      "description": null,
+      "code": "redirectAttempts: NGN.private(0)",
+      "start": {
+        "line": 277,
+        "column": 6
+      },
+      "end": {
+        "line": 277,
+        "column": 38
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "prepareBody": {
+      "type": "property",
+      "label": "prepareBody",
+      "description": null,
+      "code": "prepareBody: NGN.private(() => {\r\n        // Request body management\r\n        if (this.requestbody !== null) {\r\n          if (this.headers === null) {\r\n            this.headers = {}\r\n          }\r\n\r\n          let contentType = NGN.coalesceb(this.headers['Content-Type'], this.headers['content-type'], this.headers['Content-type'])\r\n\r\n          if (typeof this.requestbody === 'object') {\r\n            if (NGN.objectHasExactly(this.requestbody, 'form')) {\r\n              let form = this.requestbody.form\r\n              let keys = Object.keys(form)\r\n              let dataString = []\r\n\r\n              for (let i = 0; i < keys.length; i++) {\r\n                if (NGN.isFn(form[keys[i]])) {\r\n                  throw new Error('Invalid form data. Form data cannot be a complex data format such as an object or function.')\r\n                } else if (typeof form[keys[i]] === 'object') {\r\n                  dataString.push(`${keys[i]}=${encodeURIComponent(JSON.stringify(form[keys[i]]))}`)\r\n                } else {\r\n                  dataString.push(`${keys[i]}:${encodeURIComponent(form[keys[i]])}`)\r\n                }\r\n              }\r\n\r\n              this.requestbody = dataString.join('&')\r\n            } else {\r\n              this.requestbody = JSON.stringify(this.requestbody).trim()\r\n              this.setHeader('Content-Length', this.requestbody.length, false)\r\n              this.setHeader('Content-Type', NGN.coalesceb(contentType, 'application/json'), false)\r\n            }\r\n          }\r\n\r\n          if (typeof this.requestbody === 'string') {\r\n            if (contentType !== null) {\r\n              // Check for form data\r\n              let match = /([^=]+)=([^&]+)/.exec(this.requestbody)\r\n\r\n              if (match !== null && this.requestbody.trim().substr(0, 5).toLowerCase() !== 'data:' && this.requestbody.trim().substr(0, 1).toLowerCase() !== '<') {\r\n                this.setHeader('Content-Type', 'application/x-www-form-urlencoded', false)\r\n              } else {\r\n                this.setHeader('Content-Type', 'text/plain')\r\n\r\n                if (this.requestbody.trim().substr(0, 5).toLowerCase() === 'data:') {\r\n                  // Crude Data URL mimetype detection\r\n                  match = /^data:(.*);/gi.exec(this.requestbody.trim())\r\n\r\n                  if (match !== null) {\r\n                    this.setHeader('Content-Type', match[1])\r\n                  }\r\n                } else if (/^<\\?xml.*/gi.test(this.requestbody.trim())) {\r\n                  // Crude XML Detection\r\n                  this.setHeader('Content-Type', 'application/xml')\r\n                } else if (/^<html.*/gi.test(this.requestbody.trim())) {\r\n                  // Crude HTML Detection\r\n                  this.setHeader('Content-Type', 'text/html')\r\n                }\r\n              }\r\n            }\r\n\r\n            this.setHeader('Content-Type', this.requestbody.length, false)\r\n          } else {\r\n            NGN.WARN('NET.Request.body', `The request body must cannot be ${typeof this.requestbody}. Please provide a string, object, or binary value for the body.`)\r\n          }\r\n        }\r\n      })",
+      "start": {
+        "line": 279,
+        "column": 6
+      },
+      "end": {
+        "line": 344,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": true,
+      "writable": true,
+      "configuration": false,
+      "private": true
+    },
+    "method": {
+      "type": "property",
+      "label": "method",
+      "description": null,
+      "code": "set method (value) {\r\n    if (this.httpmethod === value) {\r\n      return\r\n    }\r\n\r\n    if (NGN.coalesceb(value) === null) {\r\n      NGN.WARN('NET.Request.method', 'No HTTP method specified.')\r\n    }\r\n\r\n    value = value.trim().toUpperCase()\r\n\r\n    if (HttpMethods.indexOf(value) < 0) {\r\n      NGN.WARN('NET.Request.method', `A non-standard HTTP method was recognized in a request: ${value}.`)\r\n    }\r\n\r\n    this.httpmethod = value\r\n  }",
+      "start": {
+        "line": 509,
+        "column": 2
+      },
+      "end": {
+        "line": 525,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "protocol": {
+      "type": "property",
+      "label": "protocol",
+      "description": null,
+      "code": "get protocol () {\r\n    return NGN.coalesce(this.uriParts.protocol, 'http')\r\n  }",
+      "start": {
+        "line": 383,
+        "column": 2
+      },
+      "end": {
+        "line": 385,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "host": {
+      "type": "property",
+      "label": "host",
+      "description": null,
+      "code": "get host () {\r\n    return NGN.coalesce(this.uriParts.hostname)\r\n  }",
+      "start": {
+        "line": 391,
+        "column": 2
+      },
+      "end": {
+        "line": 393,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "hostname": {
+      "type": "property",
+      "label": "hostname",
+      "description": null,
+      "code": "get hostname () {\r\n    return this.host\r\n  }",
+      "start": {
+        "line": 395,
+        "column": 2
+      },
+      "end": {
+        "line": 397,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "port": {
+      "type": "property",
+      "label": "port",
+      "description": null,
+      "code": "get port () {\r\n    return this.uriParts.port\r\n  }",
+      "start": {
+        "line": 403,
+        "column": 2
+      },
+      "end": {
+        "line": 405,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "path": {
+      "type": "property",
+      "label": "path",
+      "description": null,
+      "code": "get path () {\r\n    return NGN.coalesce(this.uriParts.path, '/')\r\n  }",
+      "start": {
+        "line": 411,
+        "column": 2
+      },
+      "end": {
+        "line": 413,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "query": {
+      "type": "property",
+      "label": "query",
+      "description": null,
+      "code": "get query () {\r\n    return NGN.coalesce(this.uriParts.query, '')\r\n  }",
+      "start": {
+        "line": 420,
+        "column": 2
+      },
+      "end": {
+        "line": 422,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "queryParameters": {
+      "type": "property",
+      "label": "queryParameters",
+      "description": null,
+      "code": "get queryParameters () {\r\n    let params = this.query.split('&')\r\n    let resultSet = {}\r\n\r\n    for (let i = 0; i < params.length; i++) {\r\n      let keypair = params[i].split('=')\r\n      let attr = `__qp__${keypair[0]}__qp__`\r\n\r\n      Object.defineProperty(resultSet, attr, {\r\n        enumerable: false,\r\n        configurable: false,\r\n        writable: true,\r\n        value: NGN.coalesceb(keypair[1])\r\n      })\r\n\r\n      Object.defineProperty(resultSet, keypair[0], {\r\n        enumerable: true,\r\n        configurable: false,\r\n        get: () => { return resultSet[attr] },\r\n        set: (value) => {\r\n          resultSet[attr] = value\r\n          this.setQueryParameter(keypair[0], value, true)\r\n        }\r\n      })\r\n    }\r\n\r\n    return resultSet\r\n  }",
+      "start": {
+        "line": 433,
+        "column": 2
+      },
+      "end": {
+        "line": 460,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "hash": {
+      "type": "property",
+      "label": "hash",
+      "description": null,
+      "code": "get hash () {\r\n    return NGN.coalesce(this.uriParts.hash, '')\r\n  }",
+      "start": {
+        "line": 466,
+        "column": 2
+      },
+      "end": {
+        "line": 468,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    },
+    "body": {
+      "type": "property",
+      "label": "body",
+      "description": null,
+      "code": "set body (value) {\r\n    this.requestbody = value\r\n    this.prepareBody()\r\n  }",
+      "start": {
+        "line": 531,
+        "column": 2
+      },
+      "end": {
+        "line": 534,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "any",
+      "readable": false,
+      "writable": true,
+      "configuration": false,
+      "private": false
+    },
+    "crossOriginRequest": {
+      "type": "property",
+      "label": "crossOriginRequest",
+      "description": null,
+      "code": "get crossOriginRequest () {\r\n    return this.isCrossOrigin(this.uri)\r\n  }",
+      "start": {
+        "line": 541,
+        "column": 2
+      },
+      "end": {
+        "line": 543,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "datatype": "undefined",
+      "readable": true,
+      "writable": false,
+      "configuration": false,
+      "private": false
+    }
+  },
+  "methods": {
+    "constructor": {
+      "type": "method",
+      "label": "constructor",
+      "description": null,
+      "code": "constructor (cfg) {\r\n    cfg = cfg || {}\r\n\r\n    // Require URL and HTTP method\r\n    NGN.objectRequires(cfg, 'url')\r\n\r\n    if (NGN.objectHasAny(cfg, 'form', 'json')) {\r\n      NGN.WARN('NET.Request', '\"form\" and \"json\" configuration properties are not valid. Use \"body\" instead.')\r\n    }\r\n\r\n    Object.defineProperties(this, {\r\n      UrlPattern: NGN.privateconst(new RegExp('^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\\\?([^#]*))?(#(.*))?')),\r\n\r\n      /**\r\n       * @cfgproperty {string} url (required)\r\n       * The complete URL for the request, including query parameters.\r\n       */\r\n      uri: NGN.private(null),\r\n\r\n      /**\r\n       * @cfg {string} [method=GET]\r\n       * The HTTP method to invoke when the request is sent. The standard\r\n       * RFC 2616 HTTP methods include:\r\n       *\r\n       * - OPTIONS\r\n       * - HEAD\r\n       * - GET\r\n       * - POST\r\n       * - PUT\r\n       * - DELETE\r\n       * - TRACE\r\n       * - CONNECT\r\n       *\r\n       * There are many additional non-standard methods some remote hosts\r\n       * will accept, including `PATCH`, `COPY`, `LINK`, `UNLINK`, `PURGE`,\r\n       * `LOCK`, `UNLOCK`, `VIEW`, and many others. If the remote host\r\n       * supports these methods, they may be used in an NGN.NET.Request.\r\n       * Non-standard methods will not be prevented, but NGN will trigger\r\n       * a warning event if a non-standard request is created.\r\n       */\r\n      httpmethod: NGN.private(null),\r\n\r\n      /**\r\n       * @cfg {boolean} [enforceMethodSafety=true]\r\n       * According to [RFC 2616](https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html),\r\n       * some HTTP methods are considered idempotent (safe). These methods\r\n       * should have no significance to data (i.e. read-only). For example,\r\n       * `OPTIONS`, `HEAD`, and `GET` are all idempotent. By default, NGN.NET\r\n       * loosely enforces idempotence by ignoring the #body when making a\r\n       * request. While it is not advised, nor officially supported, NGN.NET can\r\n       * technically ignore method safety, allowing a request body to be\r\n       * sent to a remote server. Set this configuration to `false` to\r\n       * prevent NGN.NET from enforcing idempotence/safety.\r\n       */\r\n      enforceMethodSafety: NGN.private(NGN.coalesce(cfg.enforceMethodSafety, cfg.enforcemethodsafety, true)),\r\n\r\n      /**\r\n       * @cfg {object} [headers]\r\n       * Optionally supply custom headers for the request. Most standard\r\n       * headers will be applied automatically (when appropriate), such\r\n       * as `Content-Type`, `Content-Length`, and `Authorization`.\r\n       * In Node-like environments, a `User-Agent` will be applied containing\r\n       * the `hostname` of the system making the request. Any custom headers\r\n       * supplied will override headers managed by NGN.NET.\r\n       */\r\n      headers: NGN.public(NGN.coalesceb(cfg.headers)),\r\n\r\n      /**\r\n       * @cfg {object|string|binary} [body]\r\n       * The body configuration supports text, an object, or a data URL or\r\n       * binary content. **For multi-part form data (file uploads), use\r\n       * the #files configuration _instead_ of this attribute.**\r\n       *\r\n       * It is also possible to construct a simple form submission\r\n       * (x-www-form-urlencoded) from a specially formatted key/value object\r\n       * conforming to the following syntax:\r\n       *\r\n       * ```json\r\n       * {\r\n       *   form: {\r\n       *     form_field_1: \"value\",\r\n       *     form_field_2: \"value\",\r\n       *     form_field_3: \"value\",\r\n       *   }\r\n       * }\r\n       * ```\r\n       * The object above will be automatically converted & url-encoded as:\r\n       *\r\n       * ```js\r\n       * form_field_1=value&form_field_2=value&form_field_3=value\r\n       * ```\r\n       *\r\n       * The appropriate request headers are automatically applied.\r\n       */\r\n      requestbody: NGN.public(NGN.coalesce(cfg.body)),\r\n\r\n      /**\r\n       * @cfgproperty {string} username\r\n       * A username to authenticate the request with (basic auth).\r\n       */\r\n      user: NGN.private(NGN.coalesceb(cfg.username)),\r\n\r\n      /**\r\n       * @cfgproperty {string} password\r\n       * A password to authenticate the request with (basic auth).\r\n       * @readonly\r\n       */\r\n      secret: NGN.private(NGN.coalesceb(cfg.password)),\r\n\r\n      /**\r\n       * @cfgproperty {string} accessToken\r\n       * An access token to authenticate the request with (Bearer auth).\r\n       * If this is configured, it will override any basic auth settings.\r\n       */\r\n      bearerAccessToken: NGN.private(NGN.coalesceb(cfg.accessToken)),\r\n\r\n      /**\r\n       * @cfgproperty {boolean} [withCredentials=false]\r\n       * Indicates whether or not cross-site `Access-Control` requests should\r\n       * be made using credentials such as cookies, authorization headers or\r\n       * TLS client certificates. Setting `withCredentials` has no effect on\r\n       * same-site requests.\r\n       *\r\n       * In addition, this flag is also used to indicate when cookies are to\r\n       * be ignored in the response. The default is `false`. XMLHttpRequest\r\n       * from a different domain cannot set cookie values for their own\r\n       * domain unless `withCredentials` is set to true before making the\r\n       * request. The third-party cookies obtained by setting `withCredentials`\r\n       * to true will still honor same-origin policy and hence can not be\r\n       * accessed by the requesting script through\r\n       * [document.cookie](https://developer.mozilla.org/en-US/docs/Web/API/Document/cookie)\r\n       * or from response headers.\r\n       */\r\n      withCredentials: NGN.private(NGN.coalesce(cfg.withCredentials, false)),\r\n\r\n      /**\r\n       * @cfgproperty {Number} [timeout=30000]\r\n       * The number of milliseconds to wait before considering the request to\r\n       * have timed out. Defaults to `30000` (30 seconds).\r\n       */\r\n      timeout: NGN.public(NGN.coalesce(cfg.timeout, 30000)),\r\n\r\n      /**\r\n       * @method timer\r\n       * A placeholder for a timeout monitor.\r\n       * @private\r\n       */\r\n      timer: NGN.private(null),\r\n\r\n      /**\r\n       * @method isCrossOrigin\r\n       * Determine if accessing a URL is considered a cross origin request.\r\n       * @param {string} url\r\n       * The URL to identify as a COR.\r\n       * @returns {boolean}\r\n       * @private\r\n       */\r\n      isCrossOrigin: NGN.privateconst(function (url) {\r\n        /* node-only */\r\n        if (networkInterfaces.indexOf(this.host) < 0) {\r\n          return true\r\n        }\r\n        /* end-node-only */\r\n\r\n        return this.host !== hostname // eslint-disable-line no-undef\r\n      }),\r\n\r\n      /**\r\n       * @method applyAuthorizationHeader\r\n       * Generates and applies the authorization header for the request,\r\n       * based on the presence of #username, #password, or #accessToken.\r\n       * @private\r\n       */\r\n      applyAuthorizationHeader: NGN.privateconst(() => {\r\n        if (NGN.coalesceb(this.bearerAccessToken) !== null) {\r\n          this.setHeader('Authorization', `Bearer ${this.bearerAccessToken}`, true)\r\n        } else if (NGN.coalesceb(this.user) && NGN.coalesceb(this.secret)) {\r\n          this.setHeader('Authorization', this.basicAuthToken(this.user, this.secret), true)\r\n        }\r\n      }),\r\n\r\n      /**\r\n       * @method basicAuthToken\r\n       * Generates a basic authentication token from a username and password.\r\n       * @return {[type]} [description]\r\n       * @private\r\n       */\r\n      basicAuthToken: NGN.privateconst((user, secret) => {\r\n        // Binary to base64-ascii conversions\r\n        /* node-only */\r\n        return 'Basic ' + Buffer.from(`${user}:${secret}`, 'binary').toString('base64')\r\n        /* end-node-only */\r\n        /* browser-only */\r\n        return 'Basic ' + NGN.global.btoa(`${user}:${secret}`) // eslint-disable-line no-unreachable\r\n        /* end-browser-only */\r\n      }),\r\n\r\n      /**\r\n       * @method parseUri\r\n       * Parses the URI into composable parts.\r\n       * @param {string} URL\r\n       * The URI/URL to parse.\r\n       * @return {Object}\r\n       * Returns a key/value object:\r\n       *\r\n       * ```js\r\n       * {\r\n       *   protocol: 'http',\r\n       *   hostname: 'domain.com',\r\n       *   path: '/path/to/file.html',\r\n       *   query: 'a=1&b=2',\r\n       *   hash: null\r\n       * }\r\n       * ```\r\n       * @private\r\n       */\r\n      parseUri: NGN.privateconst(uri => {\r\n        let part = uri.match(this.UrlPattern)\r\n        let protocol\r\n        /* node-only */\r\n        protocol = 'http'\r\n        /* end-node-only */\r\n        /* browser-only */\r\n        protocol = window.location.protocol.replace(':', '').toLowerCase()\r\n        /* end-browser-only */\r\n        let url = {\r\n          protocol: NGN.coalesce(part[2], protocol),\r\n          hostname: NGN.coalesce(part[4], hostname),\r\n          path: NGN.coalesceb(part[5], '/'),\r\n          query: NGN.coalesceb(part[7]),\r\n          hash: NGN.coalesceb(part[9])\r\n        }\r\n\r\n        // URL contains a username/password.\r\n        if (url.hostname.indexOf('@') > 0) {\r\n          let credentials = uri.match(/^.*\\/{1,2}(.*):(.*)@/i)\r\n\r\n          url.hostname = url.hostname.split('@').pop()\r\n\r\n          this.user = credentials[1]\r\n          this.secret = credentials[2]\r\n          this.applyAuthorizationHeader()\r\n        }\r\n\r\n        url.port = NGN.coalesce(url.hostname.match(/:([0-9]{1,6})/), url.protocol === 'https' ? 443 : 80)\r\n\r\n        if (url.hostname.indexOf(':') > 0) {\r\n          url.hostname = url.hostname.split(':')[0]\r\n        }\r\n\r\n        if (url.path.charAt(0) !== '/') {\r\n          url.path = `/${url.path}`\r\n        }\r\n\r\n        return url\r\n      }),\r\n\r\n      uriParts: NGN.private(null),\r\n\r\n      /**\r\n       * @cfgproperty {Number} [maxRedirects=10]\r\n       * Set the maximum number of redirects. There is a hard-cap of 25\r\n       * redirects to prevent cyclic requests (endless loop).\r\n       */\r\n      maximumRedirects: NGN.private(10),\r\n      redirectAttempts: NGN.private(0),\r\n\r\n      prepareBody: NGN.private(() => {\r\n        // Request body management\r\n        if (this.requestbody !== null) {\r\n          if (this.headers === null) {\r\n            this.headers = {}\r\n          }\r\n\r\n          let contentType = NGN.coalesceb(this.headers['Content-Type'], this.headers['content-type'], this.headers['Content-type'])\r\n\r\n          if (typeof this.requestbody === 'object') {\r\n            if (NGN.objectHasExactly(this.requestbody, 'form')) {\r\n              let form = this.requestbody.form\r\n              let keys = Object.keys(form)\r\n              let dataString = []\r\n\r\n              for (let i = 0; i < keys.length; i++) {\r\n                if (NGN.isFn(form[keys[i]])) {\r\n                  throw new Error('Invalid form data. Form data cannot be a complex data format such as an object or function.')\r\n                } else if (typeof form[keys[i]] === 'object') {\r\n                  dataString.push(`${keys[i]}=${encodeURIComponent(JSON.stringify(form[keys[i]]))}`)\r\n                } else {\r\n                  dataString.push(`${keys[i]}:${encodeURIComponent(form[keys[i]])}`)\r\n                }\r\n              }\r\n\r\n              this.requestbody = dataString.join('&')\r\n            } else {\r\n              this.requestbody = JSON.stringify(this.requestbody).trim()\r\n              this.setHeader('Content-Length', this.requestbody.length, false)\r\n              this.setHeader('Content-Type', NGN.coalesceb(contentType, 'application/json'), false)\r\n            }\r\n          }\r\n\r\n          if (typeof this.requestbody === 'string') {\r\n            if (contentType !== null) {\r\n              // Check for form data\r\n              let match = /([^=]+)=([^&]+)/.exec(this.requestbody)\r\n\r\n              if (match !== null && this.requestbody.trim().substr(0, 5).toLowerCase() !== 'data:' && this.requestbody.trim().substr(0, 1).toLowerCase() !== '<') {\r\n                this.setHeader('Content-Type', 'application/x-www-form-urlencoded', false)\r\n              } else {\r\n                this.setHeader('Content-Type', 'text/plain')\r\n\r\n                if (this.requestbody.trim().substr(0, 5).toLowerCase() === 'data:') {\r\n                  // Crude Data URL mimetype detection\r\n                  match = /^data:(.*);/gi.exec(this.requestbody.trim())\r\n\r\n                  if (match !== null) {\r\n                    this.setHeader('Content-Type', match[1])\r\n                  }\r\n                } else if (/^<\\?xml.*/gi.test(this.requestbody.trim())) {\r\n                  // Crude XML Detection\r\n                  this.setHeader('Content-Type', 'application/xml')\r\n                } else if (/^<html.*/gi.test(this.requestbody.trim())) {\r\n                  // Crude HTML Detection\r\n                  this.setHeader('Content-Type', 'text/html')\r\n                }\r\n              }\r\n            }\r\n\r\n            this.setHeader('Content-Type', this.requestbody.length, false)\r\n          } else {\r\n            NGN.WARN('NET.Request.body', `The request body must cannot be ${typeof this.requestbody}. Please provide a string, object, or binary value for the body.`)\r\n          }\r\n        }\r\n      })\r\n    })\r\n\r\n    if (cfg.maxRedirects) {\r\n      this.maxRedirects = cfg.maxRedirects\r\n    }\r\n\r\n    this.url = cfg.url\r\n    this.method = NGN.coalesceb(cfg.method, 'GET')\r\n\r\n    this.prepareBody()\r\n\r\n    // Apply authorization if applicable\r\n    if (NGN.coalesce(this.user, this.secret, this.bearerAccessToken) !== null) {\r\n      this.applyAuthorizationHeader()\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 12,
+        "column": 2
+      },
+      "end": {
+        "line": 360,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "cfg": {
+          "type": "argument",
+          "label": "cfg",
+          "description": null,
+          "code": "cfg",
+          "start": {
+            "line": 12,
+            "column": 15
+          },
+          "end": {
+            "line": 12,
+            "column": 18
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "constructor",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "timer": {
+      "type": "method",
+      "label": "timer",
+      "description": "A placeholder for a timeout monitor.",
+      "code": "timer: NGN.private(null)",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 159,
+        "column": 6
+      },
+      "end": {
+        "line": 159,
+        "column": 30
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "isCrossOrigin": {
+      "type": "method",
+      "label": "isCrossOrigin",
+      "description": "Determine if accessing a URL is considered a cross origin request.",
+      "code": "isCrossOrigin: NGN.privateconst(function (url) {\r\n        /* node-only */\r\n        if (networkInterfaces.indexOf(this.host) < 0) {\r\n          return true\r\n        }\r\n        /* end-node-only */\r\n\r\n        return this.host !== hostname // eslint-disable-line no-undef\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 169,
+        "column": 6
+      },
+      "end": {
+        "line": 177,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "url": {
+          "type": "argument",
+          "label": "url",
+          "description": "The URL to identify as a COR.",
+          "code": "isCrossOrigin: NGN.privateconst(function (url) {\r\n        /* node-only */\r\n        if (networkInterfaces.indexOf(this.host) < 0) {\r\n          return true\r\n        }\r\n        /* end-node-only */\r\n\r\n        return this.host !== hostname // eslint-disable-line no-undef\r\n      })",
+          "start": {
+            "line": 169,
+            "column": 6
+          },
+          "end": {
+            "line": 177,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "boolean",
+      "returnDescription": "",
+      "kind": "init",
+      "computed": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "applyAuthorizationHeader": {
+      "type": "method",
+      "label": "applyAuthorizationHeader",
+      "description": "Generates and applies the authorization header for the request,\nbased on the presence of #username, #password, or #accessToken.",
+      "code": "applyAuthorizationHeader: NGN.privateconst(() => {\r\n        if (NGN.coalesceb(this.bearerAccessToken) !== null) {\r\n          this.setHeader('Authorization', `Bearer ${this.bearerAccessToken}`, true)\r\n        } else if (NGN.coalesceb(this.user) && NGN.coalesceb(this.secret)) {\r\n          this.setHeader('Authorization', this.basicAuthToken(this.user, this.secret), true)\r\n        }\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 185,
+        "column": 6
+      },
+      "end": {
+        "line": 191,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "init",
+      "computed": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "basicAuthToken": {
+      "type": "method",
+      "label": "basicAuthToken",
+      "description": "Generates a basic authentication token from a username and password.",
+      "code": "basicAuthToken: NGN.privateconst((user, secret) => {\r\n        // Binary to base64-ascii conversions\r\n        /* node-only */\r\n        return 'Basic ' + Buffer.from(`${user}:${secret}`, 'binary').toString('base64')\r\n        /* end-node-only */\r\n        /* browser-only */\r\n        return 'Basic ' + NGN.global.btoa(`${user}:${secret}`) // eslint-disable-line no-unreachable\r\n        /* end-browser-only */\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 199,
+        "column": 6
+      },
+      "end": {
+        "line": 207,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "user": {
+          "type": "argument",
+          "label": "user",
+          "description": null,
+          "code": "user",
+          "start": {
+            "line": 199,
+            "column": 40
+          },
+          "end": {
+            "line": 199,
+            "column": 44
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        },
+        "secret": {
+          "type": "argument",
+          "label": "secret",
+          "description": null,
+          "code": "secret",
+          "start": {
+            "line": 199,
+            "column": 46
+          },
+          "end": {
+            "line": 199,
+            "column": 52
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "[type]",
+      "returnDescription": "description",
+      "kind": "init",
+      "computed": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "parseUri": {
+      "type": "method",
+      "label": "parseUri",
+      "description": "Parses the URI into composable parts.",
+      "code": "parseUri: NGN.privateconst(uri => {\r\n        let part = uri.match(this.UrlPattern)\r\n        let protocol\r\n        /* node-only */\r\n        protocol = 'http'\r\n        /* end-node-only */\r\n        /* browser-only */\r\n        protocol = window.location.protocol.replace(':', '').toLowerCase()\r\n        /* end-browser-only */\r\n        let url = {\r\n          protocol: NGN.coalesce(part[2], protocol),\r\n          hostname: NGN.coalesce(part[4], hostname),\r\n          path: NGN.coalesceb(part[5], '/'),\r\n          query: NGN.coalesceb(part[7]),\r\n          hash: NGN.coalesceb(part[9])\r\n        }\r\n\r\n        // URL contains a username/password.\r\n        if (url.hostname.indexOf('@') > 0) {\r\n          let credentials = uri.match(/^.*\\/{1,2}(.*):(.*)@/i)\r\n\r\n          url.hostname = url.hostname.split('@').pop()\r\n\r\n          this.user = credentials[1]\r\n          this.secret = credentials[2]\r\n          this.applyAuthorizationHeader()\r\n        }\r\n\r\n        url.port = NGN.coalesce(url.hostname.match(/:([0-9]{1,6})/), url.protocol === 'https' ? 443 : 80)\r\n\r\n        if (url.hostname.indexOf(':') > 0) {\r\n          url.hostname = url.hostname.split(':')[0]\r\n        }\r\n\r\n        if (url.path.charAt(0) !== '/') {\r\n          url.path = `/${url.path}`\r\n        }\r\n\r\n        return url\r\n      })",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 228,
+        "column": 6
+      },
+      "end": {
+        "line": 267,
+        "column": 8
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "uri": {
+          "type": "argument",
+          "label": "URL",
+          "description": "The URI/URL to parse.",
+          "code": "uri",
+          "start": {
+            "line": 228,
+            "column": 33
+          },
+          "end": {
+            "line": 228,
+            "column": 36
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "URL": {
+          "type": "argument",
+          "label": "URL",
+          "description": "The URI/URL to parse.",
+          "code": "parseUri: NGN.privateconst(uri => {\r\n        let part = uri.match(this.UrlPattern)\r\n        let protocol\r\n        /* node-only */\r\n        protocol = 'http'\r\n        /* end-node-only */\r\n        /* browser-only */\r\n        protocol = window.location.protocol.replace(':', '').toLowerCase()\r\n        /* end-browser-only */\r\n        let url = {\r\n          protocol: NGN.coalesce(part[2], protocol),\r\n          hostname: NGN.coalesce(part[4], hostname),\r\n          path: NGN.coalesceb(part[5], '/'),\r\n          query: NGN.coalesceb(part[7]),\r\n          hash: NGN.coalesceb(part[9])\r\n        }\r\n\r\n        // URL contains a username/password.\r\n        if (url.hostname.indexOf('@') > 0) {\r\n          let credentials = uri.match(/^.*\\/{1,2}(.*):(.*)@/i)\r\n\r\n          url.hostname = url.hostname.split('@').pop()\r\n\r\n          this.user = credentials[1]\r\n          this.secret = credentials[2]\r\n          this.applyAuthorizationHeader()\r\n        }\r\n\r\n        url.port = NGN.coalesce(url.hostname.match(/:([0-9]{1,6})/), url.protocol === 'https' ? 443 : 80)\r\n\r\n        if (url.hostname.indexOf(':') > 0) {\r\n          url.hostname = url.hostname.split(':')[0]\r\n        }\r\n\r\n        if (url.path.charAt(0) !== '/') {\r\n          url.path = `/${url.path}`\r\n        }\r\n\r\n        return url\r\n      })",
+          "start": {
+            "line": 228,
+            "column": 6
+          },
+          "end": {
+            "line": 267,
+            "column": 8
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "Object",
+      "returnDescription": "null Returns a key/value object:\n\n```js\n{\nprotocol: 'http',\nhostname: 'domain.com',\npath: '/path/to/file.html',\nquery: 'a=1&b=2',\nhash: null\n}\n```",
+      "kind": "init",
+      "computed": false,
+      "super": null,
+      "override": false,
+      "private": true
+    },
+    "setHeader": {
+      "type": "method",
+      "label": "setHeader",
+      "description": "Add a header to the request.",
+      "code": "setHeader (key, value, overwriteExisting = true) {\r\n    key = key.replace(/'|\"/gi, '').toLowerCase()\r\n\r\n    if (this.headers === null || this.headers[key] === undefined || overwriteExisting) {\r\n      if (this.headers === null) {\r\n        this.headers = {}\r\n      }\r\n\r\n      this.headers[key] = value\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 608,
+        "column": 2
+      },
+      "end": {
+        "line": 618,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "header",
+          "description": "The name of the header.",
+          "code": "key",
+          "start": {
+            "line": 608,
+            "column": 13
+          },
+          "end": {
+            "line": 608,
+            "column": 16
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "Value of the header.",
+          "code": "value",
+          "start": {
+            "line": 608,
+            "column": 18
+          },
+          "end": {
+            "line": 608,
+            "column": 23
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "overwriteExisting": {
+          "type": "argument",
+          "label": "overwriteExisting",
+          "description": "If the header already exists, setting this to `false` will prevent\nthe original header from being overwritten.",
+          "code": "overwriteExisting = true",
+          "start": {
+            "line": 608,
+            "column": 25
+          },
+          "end": {
+            "line": 608,
+            "column": 49
+          },
+          "flags": [],
+          "authors": [],
+          "default": "true",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "header": {
+          "type": "argument",
+          "label": "header",
+          "description": "The name of the header.",
+          "code": "key",
+          "start": {
+            "line": 608,
+            "column": 13
+          },
+          "end": {
+            "line": 608,
+            "column": 16
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "getHeader": {
+      "type": "method",
+      "label": "getHeader",
+      "description": "",
+      "code": "getHeader (key) {\r\n    if (this.headers === null) {\r\n      return undefined\r\n    }\r\n\r\n    if (!this.headers.hasOwnProperty(key.toLowerCase())) {\r\n      return undefined\r\n    }\r\n\r\n    return this.headers[key.toLowerCase()]\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 627,
+        "column": 2
+      },
+      "end": {
+        "line": 637,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "header",
+          "description": "The name of the header to retrieve.",
+          "code": "key",
+          "start": {
+            "line": 627,
+            "column": 13
+          },
+          "end": {
+            "line": 627,
+            "column": 16
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "header": {
+          "type": "argument",
+          "label": "header",
+          "description": "The name of the header to retrieve.",
+          "code": "key",
+          "start": {
+            "line": 627,
+            "column": 13
+          },
+          "end": {
+            "line": 627,
+            "column": 16
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "string",
+      "returnDescription": "null Returns the current value of the specified header.",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "removeHeader": {
+      "type": "method",
+      "label": "removeHeader",
+      "description": "Removes a header from the request. Nothing happens if the header does\nnot exist.",
+      "code": "removeHeader (key) {\r\n    if (this.headers !== null) {\r\n      delete this.headers[key.toLowerCase()]\r\n      delete this.headers[key]\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 646,
+        "column": 2
+      },
+      "end": {
+        "line": 651,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "header",
+          "description": "The header to remove.",
+          "code": "key",
+          "start": {
+            "line": 646,
+            "column": 16
+          },
+          "end": {
+            "line": 646,
+            "column": 19
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "header": {
+          "type": "argument",
+          "label": "header",
+          "description": "The header to remove.",
+          "code": "key",
+          "start": {
+            "line": 646,
+            "column": 16
+          },
+          "end": {
+            "line": 646,
+            "column": 19
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "setQueryParameter": {
+      "type": "method",
+      "label": "setQueryParameter",
+      "description": "Add a query parameter to the request.",
+      "code": "setQueryParameter (key, value, overwriteExisting = true) {\r\n    let re = new RegExp(\"^.*(\\\\?|&)(\" + key + \".*)(&.*)$|^.*(\\\\?|&)(\" + key + \".*)$\", 'i') // eslint-disable-line quotes\r\n    let exists = (re.exec(this.uri) !== null)\r\n    let match\r\n\r\n    if (exists) {\r\n      if (!overwriteExisting) {\r\n        return\r\n      }\r\n\r\n      match = re.exec(this.uri)\r\n\r\n      if (match !== null) {\r\n        this.url = this.uri.replace(`${NGN.coalesceb(match[5], match[2])}`, `${key}${value !== null ? '=' + encodeURIComponent(value) : ''}`)\r\n      }\r\n    } else {\r\n      this.url = `${this.uri}${this.query.length === 0 ? '?' : '&'}${key}${value !== null ? '=' + encodeURIComponent(value) : ''}`\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 665,
+        "column": 2
+      },
+      "end": {
+        "line": 683,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "parameter",
+          "description": "The name of the parameter.",
+          "code": "key",
+          "start": {
+            "line": 665,
+            "column": 21
+          },
+          "end": {
+            "line": 665,
+            "column": 24
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        },
+        "value": {
+          "type": "argument",
+          "label": "value",
+          "description": "Value of the parameter. The value is automatically URL encoded. If the\nvalue is null, only the key will be added to the URL",
+          "code": "value",
+          "start": {
+            "line": 665,
+            "column": 26
+          },
+          "end": {
+            "line": 665,
+            "column": 31
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": [
+            "ex: `http://domain.com/page.html?key`"
+          ]
+        },
+        "overwriteExisting": {
+          "type": "argument",
+          "label": "overwriteExisting",
+          "description": "If the parameter already exists, setting this to `false` will prevent\nthe original parameter from being overwritten.",
+          "code": "overwriteExisting = true",
+          "start": {
+            "line": 665,
+            "column": 33
+          },
+          "end": {
+            "line": 665,
+            "column": 57
+          },
+          "flags": [],
+          "authors": [],
+          "default": "true",
+          "datatype": "boolean",
+          "required": false,
+          "enum": null
+        },
+        "parameter": {
+          "type": "argument",
+          "label": "parameter",
+          "description": "The name of the parameter.",
+          "code": "key",
+          "start": {
+            "line": 665,
+            "column": 21
+          },
+          "end": {
+            "line": 665,
+            "column": 24
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "removeQueryParameter": {
+      "type": "method",
+      "label": "removeQueryParameter",
+      "description": "Remove a query parameter from the request URI.",
+      "code": "removeQueryParameter (key) {\r\n    this.url = this.uri.replace(new RegExp(`${key}=(.[^&]+)|\\\\?${key}|&${key}`, 'gi'), '')\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 690,
+        "column": 2
+      },
+      "end": {
+        "line": 692,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "key": {
+          "type": "argument",
+          "label": "key",
+          "description": "",
+          "code": "key",
+          "start": {
+            "line": 690,
+            "column": 24
+          },
+          "end": {
+            "line": 690,
+            "column": 27
+          },
+          "flags": [],
+          "authors": [],
+          "default": null,
+          "datatype": "string",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "startMonitor": {
+      "type": "method",
+      "label": "startMonitor",
+      "description": null,
+      "code": "startMonitor () {\r\n    if (this.timer === null) {\r\n      this.timer = setTimeout(() => {\r\n        throw new Error('Timed out retrieving ' + this.url)\r\n      }, this.timeout)\r\n    }\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 694,
+        "column": 2
+      },
+      "end": {
+        "line": 700,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "stopMonitor": {
+      "type": "method",
+      "label": "stopMonitor",
+      "description": null,
+      "code": "stopMonitor () {\r\n    clearTimeout(this.timer)\r\n    this.timer = null\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 702,
+        "column": 2
+      },
+      "end": {
+        "line": 705,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {},
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    },
+    "send": {
+      "type": "method",
+      "label": "send",
+      "description": "Send the request.",
+      "code": "send (callback) {\r\n    let body = this.body\r\n\r\n    // Disable body when safe methods are enforced.\r\n    if (NGN.coalesce(body)) {\r\n      if (this.enforceMethodSafety && 'OPTIONS|HEAD|GET'.indexOf(this.method) >= 0) {\r\n        body = null\r\n      }\r\n    }\r\n\r\n    /* node-only */\r\n    // Run request in Node-like environments\r\n    // Support local file system retrieval in node-like environments.\r\n    // This short-circuits the request and reads the file system instead.\r\n    if (this.protocol === 'file') {\r\n      if (!NGN.isFn(callback)) {\r\n        throw new Error('A callback is required when retrieving system files in a node-like environment.')\r\n      }\r\n\r\n      let response = {\r\n        status: require('fs').existsSync(this.uri.replace('file://', '')) ? 200 : 400\r\n      }\r\n\r\n      response.responseText = response.status === 200 ? require('fs').readFileSync(this.uri.replace('file://', '')).toString() : 'File does not exist or could not be found.'\r\n\r\n      return callback(response)\r\n    }\r\n\r\n    const http = this.protocol === 'https' ? require('https') : require('http')\r\n\r\n    let params = NGN.coalesceb(this.query)\r\n    let reqOptions = {\r\n      hostname: this.hostname,\r\n      port: this.port,\r\n      method: this.method,\r\n      headers: this.headers,\r\n      path: this.path\r\n    }\r\n\r\n    if (params !== null) {\r\n      reqOptions.path = `${this.path}?${params}`\r\n    }\r\n\r\n    const req = http.request(reqOptions, (response) => {\r\n      response.setEncoding('utf8')\r\n\r\n      let body = ''\r\n      response.on('data', (chunk) => {\r\n        body += chunk\r\n      })\r\n\r\n      response.on('end', () => {\r\n        switch (response.statusCode) {\r\n          case 301:\r\n          case 302:\r\n          case 307:\r\n          case 308:\r\n            if (this.redirectAttempts > this.maxRedirects) {\r\n              this.redirectAttempts = 0\r\n\r\n              this.stopMonitor()\r\n\r\n              return callback({ // eslint-disable-line standard/no-callback-literal\r\n                status: 500,\r\n                statusText: 'Too many redirects',\r\n                responseText: 'Too many redirects',\r\n                responseXML: 'Too many redirects',\r\n                readyState: 4\r\n              })\r\n            }\r\n\r\n            if (response.headers.location === undefined) {\r\n              this.stopMonitor()\r\n\r\n              return callback({ // eslint-disable-line standard/no-callback-literal\r\n                status: 502,\r\n                statusText: 'Bad Gateway',\r\n                responseText: 'Bad Gateway',\r\n                responseXML: 'Bad Gateway',\r\n                readyState: 4\r\n              })\r\n            }\r\n\r\n            this.redirectAttempts++\r\n            this.url = response.headers.location\r\n\r\n            return this.send(callback)\r\n\r\n          default:\r\n            this.stopMonitor()\r\n\r\n            return callback({ // eslint-disable-line standard/no-callback-literal\r\n              status: response.statusCode,\r\n              statusText: NGN.coalesce(response.statusText),\r\n              responseText: body,\r\n              responseXML: body,\r\n              readyState: 4\r\n            })\r\n        }\r\n      })\r\n    })\r\n\r\n    req.on('error', (err) => {\r\n      this.stopMonitor()\r\n\r\n      if (NGN.isFn(callback)) {\r\n        callback({ // eslint-disable-line standard/no-callback-literal\r\n          status: 400,\r\n          statusText: err.message,\r\n          responseText: err.message,\r\n          responseXML: err.message,\r\n          readyState: 0\r\n        })\r\n      } else {\r\n        throw err\r\n      }\r\n    })\r\n\r\n    this.startMonitor()\r\n\r\n    if (this.body) {\r\n      req.write(this.body)\r\n    }\r\n\r\n    req.end()\r\n    /* end-node-only */\r\n    /* browser-only */\r\n    let xhr = new XMLHttpRequest()\r\n    let responded = false\r\n    let me = this\r\n\r\n    // Apply readystate change handler\r\n    xhr.onreadystatechange = function () {\r\n      if (responded) {\r\n        return\r\n      }\r\n\r\n      if (xhr.readyState === XMLHttpRequest.DONE) {\r\n        responded = true\r\n\r\n        if (xhr.status === 0) {\r\n          NGN.WARN(`Request Error: ${me.method} ${me.url} (likely a CORS issue).`)\r\n        }\r\n\r\n        if (NGN.isFn(callback)) {\r\n          callback(xhr)\r\n        }\r\n      }\r\n    }\r\n\r\n    // Apply error handler\r\n    xhr.onerror = function (e) {\r\n      NGN.WARN('NET.error', e)\r\n\r\n      if (!responded && NGN.isFn(callback)) {\r\n        callback(xhr)\r\n      }\r\n\r\n      responded = true\r\n    }\r\n\r\n    xhr.ontimeout = function (e) {\r\n      responded = true\r\n      callback(xhr)\r\n    }\r\n\r\n    xhr.timeout = this.timeout\r\n\r\n    // Open the request\r\n    xhr.open(this.method, this.url, true)\r\n\r\n    // Apply withCredentials\r\n    xhr.withCredentials = this.withCredentials\r\n\r\n    // Apply Request Headers\r\n    if (this.headers !== null) {\r\n      let headers = Object.keys(this.headers)\r\n      for (let i = 0; i < headers.length; i++) {\r\n        xhr.setRequestHeader(headers[i], this.headers[headers[i]])\r\n      }\r\n    }\r\n\r\n    // Write the body (which may be null) & send the request\r\n    xhr.send(body)\r\n    /* end-browser-only */\r\n  }",
+      "tags": {},
+      "exceptions": {},
+      "start": {
+        "line": 715,
+        "column": 2
+      },
+      "end": {
+        "line": 900,
+        "column": 3
+      },
+      "flags": [],
+      "authors": [],
+      "arguments": {
+        "callback": {
+          "type": "argument",
+          "label": "callback",
+          "description": null,
+          "code": "callback",
+          "start": {
+            "line": 715,
+            "column": 8
+          },
+          "end": {
+            "line": 715,
+            "column": 16
+          },
+          "flags": [],
+          "authors": [],
+          "datatype": "any",
+          "required": true,
+          "enum": null
+        }
+      },
+      "returnType": "void",
+      "returnDescription": "void",
+      "kind": "method",
+      "generator": false,
+      "static": false,
+      "computed": false,
+      "async": false,
+      "super": null,
+      "override": false,
+      "private": false
+    }
+  }
+}

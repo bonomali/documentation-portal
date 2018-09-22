@@ -1,0 +1,49 @@
+{
+  "type": "namespace",
+  "label": "global",
+  "description": null,
+  "code": null,
+  "tags": {},
+  "exceptions": {},
+  "events": {},
+  "start": {
+    "line": 0,
+    "column": 0
+  },
+  "end": {
+    "line": 0,
+    "column": 0
+  },
+  "flags": [],
+  "authors": [],
+  "sourcefile": null,
+  "properties": {},
+  "methods": {},
+  "namespaces": [],
+  "classes": [
+    {
+      "href": "/CustomException.json",
+      "name": "CustomException"
+    },
+    {
+      "href": "/EventEmitterBase.json",
+      "name": "EventEmitterBase"
+    },
+    {
+      "href": "/NGNDateField.json",
+      "name": "NGNDateField"
+    },
+    {
+      "href": "/Network.json",
+      "name": "Network"
+    },
+    {
+      "href": "/TreeLeaf.json",
+      "name": "TreeLeaf"
+    },
+    {
+      "href": "/TreeNode.json",
+      "name": "TreeNode"
+    }
+  ]
+}
