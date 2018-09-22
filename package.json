@@ -11,9 +11,9 @@
   "license": "BSD-3-Clause",
   "dependencies": {},
   "devDependencies": {
-    "@chassis/core": "^1.3.1",
+    "@chassis/core": "^2.0.3",
     "fs-extra": "^7.0.0",
-    "productionline-web": "^1.1.5",
+    "productionline-web": "^1.1.7",
     "shortbus": "^1.2.8"
   }
 }

@@ -1,9 +1,6 @@
 const NamespaceModel = new ClassModel({
-  fields: {
-    namespaces: {
-      type: Object,
-      default: {}
-    }
+  relationships: {
+    namespaces: [NamespaceModel]
   }
 })
 

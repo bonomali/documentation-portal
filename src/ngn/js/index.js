@@ -35,74 +35,26 @@ NGN.BUS.on({
       loaded: () => {
         let { namespaces } = Product.manifest
 
-        Product.namespaces.load({
-          "type": "namespace",
-          "label": "global",
-          "description": null,
-          "code": null,
-          "tags": {},
-          "exceptions": {},
-          "events": {},
-          "start": {
-            "line": 0,
-            "column": 0
-          },
-          "end": {
-            "line": 0,
-            "column": 0
-          },
-          "flags": [],
-          "authors": [],
-          "sourcefile": null,
-          "properties": {},
-          "methods": {},
-          "namespaces": [],
-          "classes": [
-            {
-              "href": "/CustomException.json",
-              "name": "CustomException"
-            },
-            {
-              "href": "/EventEmitterBase.json",
-              "name": "EventEmitterBase"
-            },
-            {
-              "href": "/NGNDateField.json",
-              "name": "NGNDateField"
-            },
-            {
-              "href": "/Network.json",
-              "name": "Network"
-            },
-            {
-              "href": "/TreeLeaf.json",
-              "name": "TreeLeaf"
-            },
-            {
-              "href": "/TreeNode.json",
-              "name": "TreeNode"
-            }
-          ]
-        })
+        for (let ns in namespaces) {
+          // Product.resources[ns] = new NGN.NET.Resource({
+          //   baseUrl: namespaces[ns]
+          // })``
 
-        // for (let ns in namespaces) {
-        //   // Product.resources[ns] = new NGN.NET.Resource({
-        //   //   baseUrl: namespaces[ns]
-        //   // })``
-        //
-        //   // NGN.NET.json(`${API.baseUrl}${namespaces[ns]}`, (err, data) => {
-        //   //   if (err) {
-        //   //     throw err
-        //   //   }
-        //   //
-        //   //   Product.namespaces.load(data)
-        //   // })
-        // }
+          NGN.NET.json(`${API.baseUrl}${namespaces[ns]}`, (err, data) => {
+            if (err) {
+              throw err
+            }
+
+            Product.namespaces.load(data)
+          })
+        }
       }
     },
 
     model: {
       initiated: () => {
+        console.log(new NamespaceModel());
+
         Product.namespaces = new NGN.DATA.Store({
           model: NamespaceModel
         })
