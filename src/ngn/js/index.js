@@ -35,26 +35,24 @@ NGN.BUS.on({
       loaded: () => {
         let { namespaces } = Product.manifest
 
-        for (let ns in namespaces) {
+        namespaces.forEach(ns => {
           // Product.resources[ns] = new NGN.NET.Resource({
           //   baseUrl: namespaces[ns]
-          // })``
+          // })
 
-          NGN.NET.json(`${API.baseUrl}${namespaces[ns]}`, (err, data) => {
+          NGN.NET.json(`${API.baseUrl}${ns}`, (err, data) => {
             if (err) {
               throw err
             }
-
-            Product.namespaces.load(data)
+            console.log(data);
+            // Product.namespaces.load(data)
           })
-        }
+        })
       }
     },
 
     model: {
       initiated: () => {
-        console.log(new NamespaceModel());
-
         Product.namespaces = new NGN.DATA.Store({
           model: NamespaceModel
         })

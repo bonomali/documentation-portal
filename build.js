@@ -3,7 +3,6 @@ const path = require('path')
 
 const ProductionLine = require('productionline-web')
 
-const Postcss = require('postcss')
 const Chassis = require('@chassis/core')
 
 const TaskRunner = require('shortbus')
