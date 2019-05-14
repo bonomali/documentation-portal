@@ -1,11 +1,34 @@
 custom-properties {
-	--red: hsl(11,74%,54%);
-	--green: hsl(89,82%,40%);
-	--blue: #0099FF;
-	--yellow: hsl(55,100%,64%);
+	--azure-light:       #2399F8; /* 3:1   on white (A)   */
+	--azure-medium:      #007ACD; /* 4.5:1 on white (AA)  */
+	--azure-dark:        #005C9A; /* 7:1   on white (AAA) */
 
-	--font-family: -apple-system, BlinkMacSystemFont, 'Avenir Next', Avenir, Helvetica, Arial, sans-serif;
-	--text-color: var(--grey-c10);
+	--blue-royal:        #0C4FCB; /* 7:1   on white (AAA) */
+	--blue-royal-dark:   #0B3B99; /* 10:1  on white (AAA) */
+
+	--green-light:       #869F1E; /* 3:1   on white (A)   */
+	--green-medium:      #6A7F15; /* 4.5:1 on white (AA)  */
+	--green-dark:        #4D6010; /* 7:1   on white (AAA) */
+
+	--yellow-light:      #F6CE60; /* 1.5:1 on white       */
+	--yellow-medium:     #BB8E02; /* 3:1   on white (A)   */
+
+	--grey-dark:   #253031;
+
+	--mint:        #F7FFF7;
+
+	--black:               #280000;
+	--dark-grey:           #7C7D8D;
+	--cool-dark-grey:      #8B8CA8;
+	--medium-grey:         #BD8DCC;
+	--light-grey:          #E4E6EA;
+
+	--royal-blue:          #093FA2;
+	--azure:               #2399F4;
+	--green:               #A9C731;
+
+	--font-family:         -apple-system, BlinkMacSystemFont, 'Avenir Next', Avenir, Helvetica, Arial, sans-serif;
+	--text-color:          #585865;
 
 	--inline-block-border-radius: .236em;
 	--icon-border-radius: 2px;
