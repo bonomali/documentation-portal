@@ -1,73 +1,64 @@
 // const API = new NGN.NET.Resource({
 //   credentials: {},
-//   baseUrl: 'http://localhost:8015/'
+//   baseUrl: 'http://localhost:8016/'
 // })
+
+// TEMP
+NGN.Queue = NGN.Tasks
 
 const API = {
   credentials: {},
-  baseUrl: 'http://localhost:8015/'
+  baseUrl: 'http://localhost:8000/'
 }
 
-const Product = {
-  resources: {}
-}
+const App = new AppManager()
+const Data = new DataManager()
 
-NGNX.Loader({
-  sync: [
-    './js/models/CodePosition.js',
-    './js/models/Snippet.js',
-    './js/models/Tag.js',
-    './js/models/Parameter.js',
-    './js/models/Event.js',
-    './js/models/Exception.js',
-    './js/models/Construct.js',
-    './js/models/Property.js',
-    './js/models/Return.js',
-    './js/models/Method.js',
-    './js/models/Class.js',
-    './js/models/Namespace.js'
-  ]
-}, () => {})
+NGN.BUS.funnel(['TEMP_ALL_DEPENDENCIES_LOADED', 'DATA_FETCHED'], () => console.log(Data))
 
-NGN.BUS.on({
-  product: {
-    manifest: {
-      loaded: () => {
-        let { namespaces } = Product.manifest
+const queue = new NGN.Queue()
 
-        namespaces.forEach(ns => {
-          // Product.resources[ns] = new NGN.NET.Resource({
-          //   baseUrl: namespaces[ns]
-          // })
+queue.add('Fetching NGN Documentation data...', next => {
+  NGN.NET.json(API.baseUrl, (err, data) => {
+    if (err) {
+      throw err
+    }
 
-          NGN.NET.json(`${API.baseUrl}${ns}`, (err, data) => {
-            if (err) {
-              throw err
-            }
-            console.log(data);
-            // Product.namespaces.load(data)
-          })
-        })
-      }
-    },
+    Data.manifest = data
 
-    model: {
-      initiated: () => {
-        Product.namespaces = new NGN.DATA.Store({
-          model: NamespaceModel
-        })
+    let queue = new NGN.Queue()
 
-        // Product.model.once('load', () => Product.view.emit('populate'))
+    new Array('namespace', 'bus', 'exceptions').forEach(resource => {
+      let url = Data.getResourceHref(resource)
 
-        NGN.NET.json(API.baseUrl, (err, data) => {
+      queue.add(`Fetching ${url}...`, next => {
+        NGN.NET.json(url, (err, data) => {
           if (err) {
             throw err
           }
 
-          Product.manifest = data
-          NGN.BUS.emit('product.manifest.loaded')
+          Data.addResource(resource, data)
+          next()
         })
-      }
-    }
-  }
+      })
+    })
+
+    queue.on('complete', () => NGN.BUS.emit('DATA_FETCHED'))
+    queue.run()
+  })
 })
+
+queue.add('Loading Dependencies...', next => {
+  let sync = [
+    './js/registries/main.js'
+  ]
+
+  NGN.BUS.thresholdOnce('TEMP_DEPENDENCY_LOADED', sync.length, () => {
+    NGN.BUS.emit('TEMP_ALL_DEPENDENCIES_LOADED')
+  })
+
+  NGNX.Loader({ sync })
+})
+
+queue.on('complete', () => console.log('Done.'))
+queue.run()
