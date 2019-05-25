@@ -16,10 +16,12 @@
       align-items: center;
 
       & h1 {
+        flex: 1 1 auto;
         display: flex;
         align-items: baseline;
+        justify-content: space-between;
 
-        margin: 0 var(--inline-block-padding-x) 0 0;
+        margin: 0;
 
         @chassis font-size root;
         font-weight: normal;
@@ -30,6 +32,11 @@
           margin-right: var(--inline-block-padding-x);
           color: var(--white);
           text-decoration: none;
+        }
+
+        @chassis vp-width from medium {
+          flex: 0 0 auto;
+          margin-right: var(--inline-block-padding-x);
         }
       }
 
@@ -44,7 +51,7 @@
     }
 
     & nav {
-      display: flex;
+      display: none;
       align-items: center;
       margin: 0;
 
@@ -78,6 +85,10 @@
           opacity: 1;
           text-decoration: underline;
         }
+      }
+
+      @chassis vp-width from medium {
+        display: flex;
       }
     }
   }

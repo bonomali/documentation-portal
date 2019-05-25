@@ -109,7 +109,7 @@
 
       & + .content {
         @chassis constrain-width gutter(6.18%);
-        margin-bottom: calc(5 * var(--inline-block-margin-y));
+        /* margin-bottom: calc(5 * var(--inline-block-margin-y)); */
         padding-right: 0;
         border-left: 1px solid var(--grey-1);
       }
@@ -126,6 +126,10 @@
     display: flex;
     flex-direction: column;
 
+    /* height: auto;
+    max-height: 10000px;
+    transition: max-height 1s ease-out; */
+
     & > section {
       & h2,
       & h3 {
@@ -138,6 +142,19 @@
       }
 
       @chassis import dir(views);
+
+      &[fade-in] {
+        animation: fadein 618ms;
+      }
+
+      &[fade-out] {
+        opacity: 0;
+        animation: fadeout 382ms;
+      }
     }
+
+    /* &[transition] {
+      max-height: 0;
+    } */
   }
 }

@@ -1,4 +1,12 @@
 & > footer {
   padding: calc(4 * var(--inline-block-padding-y)) 0;
   background: var(--grey-0);
+
+  & .width.constraint {
+    text-align: center;
+  }
+
+  & a.authorio.logo {
+    text-decoration: none;
+  }
 }

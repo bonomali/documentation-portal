@@ -7,13 +7,13 @@
       {
         "label": "Documentation",
         "type": "internal",
-        "view": "docs"
+        "path": "docs"
       },
 
       {
         "label": "Guides",
         "type": "internal",
-        "view": "guides"
+        "path": "guides"
       },
 
       {
@@ -32,13 +32,13 @@
       {
         "label": "Documentation",
         "type": "internal",
-        "view": "docs"
+        "path": "docs"
       },
 
       {
         "label": "Guides",
         "type": "internal",
-        "view": "guides"
+        "path": "guides"
       },
 
       {
@@ -57,13 +57,13 @@
       {
         "label": "Documentation",
         "type": "internal",
-        "view": "docs"
+        "path": "docs"
       },
 
       {
         "label": "Guides",
         "type": "internal",
-        "view": "guides"
+        "path": "guides"
       }
     ]
   },
@@ -76,13 +76,13 @@
       {
         "label": "Documentation",
         "type": "internal",
-        "view": "docs"
+        "path": "docs"
       },
 
       {
         "label": "Guides",
         "type": "internal",
-        "view": "guides"
+        "path": "guides"
       },
 
       {
@@ -101,13 +101,13 @@
       {
         "label": "Documentation",
         "type": "internal",
-        "view": "docs"
+        "path": "docs"
       },
 
       {
         "label": "Guides",
         "type": "internal",
-        "view": "guides"
+        "path": "guides"
       },
 
       {

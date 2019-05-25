@@ -1,8 +1,8 @@
 import ViewRegistry from '../../lib/ngn-ponyfills-vdom.js'
-import View from '../registries/view-controller.js'
+import ViewController from '../registries/view-controller.js'
 
 export const HomeView = new ViewRegistry({
-  parent: View,
+  parent: ViewController,
   selector: '.home.view',
   namespace: 'home.',
 
@@ -11,7 +11,7 @@ export const HomeView = new ViewRegistry({
   },
 
   events: {
-    populate (products) {
+    populate: products => {
       HomeView.render(HomeView.ref.productList, products.map(product => {
         return HomeView.createElement('li', {
           class: classNames(product.id, 'product')
@@ -28,19 +28,27 @@ export const HomeView = new ViewRegistry({
             }, [product.description]),
 
             HomeView.createElement('nav', {}, product.nav.map(item => {
-              let isInternal = item.type === 'internal'
-
-              let tag = 'button'
-              let attributes = {}
-
-              if (isInternal) {
-                tag = 'a'
-                attributes.href = item.url
-              } else {
-                attributes.class = 'bare'
+              let cfg = {
+                tag: 'button',
+                attributes: {},
+                on: {},
+                children: [item.label]
               }
 
-              return HomeView.createElement(tag, attributes, [item.label])
+              if (item.type === 'external') {
+                cfg.tag = 'a'
+                cfg.attributes.href = item.url
+                cfg.attributes.target = '_blank'
+              } else {
+                cfg.tag = 'button'
+                cfg.attributes.class = 'bare'
+                cfg.on.click = evt => ViewController.emit('goto', {
+                  view: product.id,
+                  path: item.path
+                })
+              }
+
+              return HomeView.createElement(cfg)
             }))
           ])
         ])

@@ -243,10 +243,15 @@ export default class ViewRegistry extends NGNX.VIEW.Registry {
     }
   }
 
-  renderHTML (target, children) {
+  renderHTML (target, children, append = false) {
     return new Promise((resolve, reject) => {
       if (!target) {
         return reject('Invalid target element.')
+      }
+
+      if (append) {
+        children.forEach(child => target.appendChild(this.createNode(child)))
+        return resolve(target)
       }
 
       if (typeof children === 'string' || typeof children === 'number') {
@@ -334,7 +339,7 @@ export default class ViewRegistry extends NGNX.VIEW.Registry {
       this.cachedElements.set(target, this.parseElement(target))
     }
 
-    return this.renderHTML(target, children)
+    return this.renderHTML(target, children, NGN.coalesce(args[2]) ? true : false)
 
     // TODO: Handle template rendering
   }

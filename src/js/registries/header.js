@@ -6,8 +6,21 @@ const Header = new ViewRegistry({
 
   references: {
     activeSection: '.title .active-section',
-    versionTag: '.title .version.tag'
+    versionTag: '.title .version.tag',
+    secondarySection: '.secondary'
   },
+
+  states: {
+    loading () {
+      this.ref.secondarySection.element.classList.add('hidden')
+    },
+
+    loaded () {
+      this.ref.secondarySection.element.classList.remove('hidden')
+    }
+  },
+
+  initialState: 'loading',
 
   events: {
     populate (section, version) {
