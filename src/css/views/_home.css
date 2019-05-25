@@ -1,0 +1,21 @@
+&.home {
+  & .product nav {
+    display: flex;
+    @chassis apply inline-block padding;
+    background: var(--grey-0);
+    border-radius: var(--default-border-radius);
+    @chassis font-size small;
+
+    & > * {
+      margin-right: var(--inline-block-padding-x);
+
+      &:last-child {
+        margin-right: 0;
+      }
+    }
+
+    & button {
+      @chassis extend anchor;
+    }
+  }
+}

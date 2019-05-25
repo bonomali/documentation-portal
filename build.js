@@ -1,154 +1,172 @@
-const fs = require('fs-extra')
 const path = require('path')
+const fs = require('fs-extra')
 
 const ProductionLine = require('productionline-web')
-
 const Chassis = require('@chassis/core')
-
-const TaskRunner = require('shortbus')
-const CleanCss = require('clean-css')
 
 class CustomProductionLine extends ProductionLine {
   constructor (cfg) {
     super(cfg)
-
-    this.paths = {
-      javascript: path.join(this.SOURCE, '/**/*.js'),
-      css: path.join(this.SOURCE, '/**/*.css'),
-      json: path.join(this.SOURCE, '**/*.json')
-    }
   }
 
-  copyJson (cb) {
-    this.walk(this.paths.json).forEach(file => {
-      this.copyToOutput(file)
+  buildCSS (minify = true, cb) {
+    let tasks = new this.TaskRunner()
+
+    this.walk(this.CSS).forEach(filepath => {
+      tasks.add(`Process ${this.localDirectory(filepath)}`, next => {
+        let chassis = new Chassis({
+          minify,
+          sourceMap: true,
+          sourceMapPath: path.dirname(this.outputDirectory(filepath)),
+          theme: path.resolve(`${this.SOURCE}/css/main.theme`),
+
+          layout: {
+            minWidth: 320,
+            maxWidth: 1920
+          }
+        })
+
+        chassis.process(filepath, (err, processed) => {
+          if (err) {
+            return console.error(err)
+          }
+
+          if (processed.sourceMap) {
+            this.writeFileSync(`${this.outputDirectory(filepath)}.map`, processed.sourceMap)
+          }
+
+          this.writeFile(this.outputDirectory(filepath), processed.css, next)
+        })
+      })
+    })
+
+    tasks.on('complete', cb)
+    tasks.run()
+  }
+
+  buildJavaScript (transpile = true, minify = true, createsourcemaps = true, cb) {
+    if (createsourcemaps && this.PRIVATE.SOURCEMAPURL === null) {
+      createsourcemaps = false
+    }
+
+    let transpiler = new this.TaskRunner()
+
+    this.walk(this.JAVASCRIPT).forEach(filepath => {
+      transpiler.add(`Transpile ${this.localDirectory(filepath)}`, cont => {
+        // Handle transpilation
+        let transpiled = transpile ? this.transpile(filepath) : { code: fs.readFileSync(filepath), map: null }
+
+        // Sourcemap configuration
+        let createmap = createsourcemaps
+
+        if (!createsourcemaps) {
+          transpiled.map = null
+        } else if (this.PRIVATE.IGNOREDSOURCEMAPS.length > 0) {
+          for (let i = 0; i < this.PRIVATE.IGNOREDSOURCEMAPS.length; i++) {
+            if (this.minimatch(filepath, path.join(this.SOURCE, this.PRIVATE.IGNOREDSOURCEMAPS[i]))) {
+              createmap = false
+              transpiled.map = null
+              this.warn('     - Skipped sourcemap creation for ' + this.localDirectory(filepath) + ' (EXPLICITLY IGNORED)')
+              break
+            }
+          }
+        }
+
+        // Handle minification
+        let minified = minify ? this.minify(transpiled.code, this.localDirectory(filepath), transpiled.map) : transpiled
+
+        // Apply comment header & footer
+        let content = this.applyHeader(minified.code, 'js')
+        content = this.applyFooter(minified.code, 'js')
+
+        // Create sourcemaps
+        if (createmap && minified.map !== null) {
+          let mappath = path.join(this.sourcemapDirectory(filepath), path.basename(filepath) + '.map')
+          this.writeFileSync(mappath, minified.map)
+          this.subtle('     + SourceMap created:', this.localDirectory(mappath))
+        }
+
+        this.writeFile(this.outputDirectory(filepath), content, cont)
+      })
+    })
+
+    transpiler.on('complete', cb)
+    transpiler.run(true)
+  }
+
+  copyConfig (cb) {
+    this.walk(this.CONFIG).forEach(filepath => {
+      fs.copySync(filepath, this.outputDirectory(filepath))
     })
 
     cb && cb()
   }
 
-  processCss (minify = true, cb) {
-    let tasks = new TaskRunner()
-
-    let chassis = new Chassis({
-      importBasePath: path.resolve(`${this.SOURCE}/css`),
-      theme: path.resolve(`${this.SOURCE}/css/main.theme`),
-
-      layout: {
-        minWidth: 320
-      }
+  copyCustomElements (cb) {
+    this.walk(this.CUSTOMELEMENTS).forEach(dir => {
+      let filepath = path.join(dir, 'dist')
+      this.walk(filepath).forEach(file => fs.copySync(filepath, this.outputDirectory('assets/webcomponents')))
     })
 
-    this.walk(this.paths.css).forEach(filepath => {
-      let filename = /[^/]*$/.exec(filepath)[0]
+    cb && cb()
+  }
 
-      if (filename.startsWith('_')) {
-        return
-      }
-
-      tasks.add(`Process ${this.localDirectory(filepath)}`, next => {
-        let dir = path.dirname(filepath)
-        let css = this.readFileSync(filepath)
-
-        chassis.process(css, (err, css) => {
-          if (err) {
-            throw err
-          }
-
-          let output = {
-            path: this.outputDirectory(filepath),
-            css
-          }
-
-          if (!minify) {
-            return this.writeFile(output.path, output.css, next)
-          }
-
-          let minified = chassis.minify(output.css, true)
-
-          if (minified.sourceMap) {
-            this.writeFileSync(`${output.path}.map`, minified.sourceMap.toString())
-          }
-
-          this.writeFile(output.path, minified.styles, next)
-        }, filepath)
-      })
+  copyLibs (cb) {
+    this.walk(this.LIBS).forEach(filepath => {
+      fs.copySync(filepath, this.outputDirectory(filepath))
     })
 
-    tasks.on('complete', cb)
-    tasks.run()
+    cb && cb()
   }
 
-  processJavascript (minify = true, cb) {
-    let tasks = new TaskRunner()
-
-    this.walk(this.paths.javascript).forEach(filepath => {
-      tasks.add(`Process ${this.localDirectory(filepath)}`, cont => {
-        let dir = path.dirname(filepath)
-        let isAsset = this.isSubdirectory(dir, path.resolve(`${this.SOURCE}/assets`))
-
-        if (isAsset) {
-          return this.copyToOutput(filepath.replace(this.SOURCE, ''), cont)
-        }
-
-        let output = this.transpile(filepath)
-
-        if (minify) {
-          output = this.minify(output.code)
-        }
-
-        this.writeFile(this.outputDirectory(filepath), this.applyHeader(output.code, 'js'), cont)
-        // this.writeFile(this.outputDirectory(filepath), output.code, cont)
-      })
+  copyPolyfills (cb) {
+    this.walk(this.POLYFILLS).forEach(filepath => {
+      fs.copySync(filepath, this.outputDirectory(filepath))
     })
 
-    tasks.on('complete', cb)
-    tasks.run()
+    cb && cb()
   }
 
-  isSubdirectory (child, parent) {
-    if (child === parent) {
-      return false
-    }
-
-    let tokens = {
-      parent: parent.split(path.sep).filter(token => token.length),
-      child: child.split(path.sep).filter(token => token.length)
-    }
-
-    return tokens.parent.every((token, i) => tokens.child[i] === token)
-  }
-
-  make (devMode = false) {
+  make (dev = false) {
     this.clean()
-    this.addTask('Copy API Data', next => this.copyJson(next))
-    this.copyAssets(true)
+    this.addTask('Copy Config', next => this.copyConfig(next))
+    this.copyAssets()
+    this.addTask('Copy Custom Elements', next => this.copyCustomElements(next))
+    this.addTask('Copy Polyfills', next => this.copyPolyfills(next))
+    this.addTask('Copy Libraries', next => this.copyLibs(next))
     this.buildHTML()
-    this.addTask('Build JavaScript', next => this.processJavascript(!devMode, next))
-    this.addTask('Build CSS', next => this.processCss(!devMode, next))
+    this.addTask('Build JavaScript', next => this.buildJavaScript(!dev, !dev, !dev, next))
+    this.addTask('Build CSS', next => this.buildCSS(!dev, next))
   }
 }
 
 const builder = new CustomProductionLine({
-  header: `Copyright (c) ${new Date().getFullYear()} Ecor Ventures LLC.\nVersion ${this.version} built on ${new Date().toString()}`,
+  header: `Copyright (c) ${new Date().getFullYear()} Author.io.\nVersion ${this.version} built on ${new Date().toString()}`,
 
   commands: {
-    '--build' (cmd) {
+    '--prod' (cmd) {
       builder.make()
     },
 
-    '--build-dev' (cmd) {
+    '--dev' (cmd) {
       builder.make(true)
 
-      builder.watch((action, filepath) => {
-        if (action === 'create' || action === 'update') {
-          builder.make(true)
-          builder.run()
-        }
-      })
+      // builder.watch((action, filepath) => {
+      //   if (action === 'create' || action === 'update') {
+      //     builder.make(true)
+      //     builder.run()
+      //   }
+      // })
     }
   }
 })
 
-builder.assets = path.resolve('./src/assets')
+builder.ASSETS = ['/assets']
+builder.CONFIG = path.join(builder.SOURCE, '/config/**/*.json')
+builder.LIBS = path.join(builder.SOURCE, '/lib/**/*.*')
+builder.CSS = path.join(builder.SOURCE, '/css/**/*.css')
+builder.JAVASCRIPT = path.join(builder.SOURCE, '/js/**/*.js')
+builder.CUSTOMELEMENTS = './node_modules/@author.io/element-*'
+builder.POLYFILLS = path.join(builder.SOURCE, '/polyfills/**/*.*')
+
 builder.run()

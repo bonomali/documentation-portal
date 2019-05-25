@@ -1,0 +1,4 @@
+& > footer {
+  padding: calc(4 * var(--inline-block-padding-y)) 0;
+  background: var(--grey-0);
+}

@@ -4,104 +4,118 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width" />
 
+    <title>Author.io Documentation Portal</title>
+
+    <link rel="stylesheet" href="https://use.typekit.net/urx6izk.css">
     <link rel="stylesheet" href="/css/main.css">
 
-    <script src="lib/ngn2.js"></script>
+    <script src="lib/ngn/debug.js"></script>
+    <script src="lib/ngnx/debug.js"></script>
+    <!-- <script src="lib/ngn-ponyfills-vdom.js"></script> -->
+    <script src="lib/classnames/index.js"></script>
 
-    <!-- <script src="//cdn.author.io/ngn/1.3.15/legacy.complete.min.js"></script> -->
-    <!-- <script src="assets/lib/ngn.min.js"></script> -->
-    <!-- <script src="//cdn.author.io/ngnx/1.7.13/debug.js"></script> -->
-
-    <title>Author.io Documentation Portal</title>
+    <script src="assets/webcomponents/author-base.min.js"></script>
+    <script src="assets/webcomponents/author-cycle.min.js"></script>
+    <script src="assets/webcomponents/author-drawer.min.js"></script>
+    <script src="assets/webcomponents/author-control.min.js"></script>
+    <script src="assets/webcomponents/author-menu.min.js"></script>
+    <script src="assets/webcomponents/author-options.min.js"></script>
+    <script src="assets/webcomponents/author-option.min.js"></script>
+    <script src="assets/webcomponents/author-selected-options.min.js"></script>
+    <script src="assets/webcomponents/author-optgroup-label.min.js"></script>
+    <script src="assets/webcomponents/author-optgroup.min.js"></script>
+    <script src="assets/webcomponents/author-select.min.js"></script>
+    <script src="assets/webcomponents/author-datalist.min.js"></script>
   </head>
 
-  <body class="docs portal">
-    <main>
-
-      <header class="primary">
+  <body class="authorio docs portal">
+    <header>
+      <section class="primary">
         <div class="width constraint">
-          <h1>
-            Author.io Documentation Portal
-          </h1>
-        </div>
-      </header>
+          <div class="title">
+            <h1>
+              <a class="authorio logo" href="http://author.io" target="_blank">Author.io</a>
+              <span class="active-section">Product Documentation</span>
+            </h1>
 
-      <div class="scrollable">
-
-        <div class="portal content width constraint">
-          <ul class="products">
-            <li class="ngn product">
-              <h2 class="title">
-                NGN Platform
-              </h2>
-
-              <section class="info">
-                <p class="description">
-                  NGN is a JavaScript Systems Development Platform.
-                </p>
-
-                <nav>
-                  <a href="/ngn">Documentation</a>
-                  <a href="#">Guides</a>
-                  <a href="#">GitHub</a>
-                  <a href="#">CodePen</a>
-                  <a href="#">Website</a>
-                </nav>
-              </section>
-            </li>
-
-            <li class="jetngn product">
-              <h2 class="title">
-                JetNGN
-              </h2>
-
-              <section class="info">
-                <p class="description">
-                  JetNGN is a library for building interactive web applications, built on top of NGN.
-                </p>
-
-                <nav>
-                  <a href="/jetngn">Documentation</a>
-                  <a href="#">Guides</a>
-                  <a href="#">GitHub</a>
-                  <a href="#">CodePen</a>
-                  <a href="#">Website</a>
-                </nav>
-              </section>
-            </li>
-
-            <li class="chassis product">
-              <h2 class="title">
-                NGN Chassis
-              </h2>
-
-              <section class="info">
-                <p class="description">
-                  NGN Chassis is a CSS Pre-processor and Framework for modern responsive UI development.
-                </p>
-
-                <nav>
-                  <a href="/chassis">Documentation</a>
-                  <a href="#">Guides</a>
-                  <a href="#">GitHub</a>
-                  <a href="#">CodePen</a>
-                  <a href="#">Website</a>
-                </nav>
-              </section>
-            </li>
-          </ul>
-        </div>
-
-        <footer class="portal">
-          <div class="width constraint">
-            Footer
+            <author-control class="hidden version">
+              <select></select>
+            </author-control>
           </div>
-        </footer>
 
-      </div>
+          <nav>
+            <h3>Main Navigation</h3>
 
+            <a href="https://github.com/ngnjs" target="_blank">
+              <svg class="icon" src="assets/icons/github.svg"></svg>
+              <span class="label">Github</span>
+            </a>
+            <a href="#" target="_blank">
+              <svg class="icon" src="assets/icons/youtube-small.svg"></svg>
+              <span class="label">Youtube</span>
+            </a>
+          </nav>
+        </div>
+      </section>
+
+      <section class="secondary">
+        <author-control class="search">
+          <div class="input-wrapper">
+            <svg class="icon" src="assets/icons/search.svg"></svg>
+            <input type="text" placeholder="Search">
+          </div>
+          <datalist>
+            <option value="1">Test 1</option>
+            <option value="2">Test 2</option>
+            <option value="3">Test 3</option>
+            <option value="4">Test 4</option>
+            <option value="5">Test 5</option>
+          </datalist>
+        </author-control>
+
+        <div class="mobile-only">
+          <button class="bare hamburger">
+            <svg class="icon" src="assets/icons/hamburger.svg"></svg>
+          </button>
+        </div>
+      </section>
+    </header>
+
+    <main>
+      <aside class="hidden sidebar">
+        <author-drawer position="right" inert>
+          <h3>Sidebar</h3>
+
+          <nav>
+            <h3>Sections Menu</h3>
+
+            <div class="sections">
+
+            </div>
+          </nav>
+        </author-drawer>
+      </aside>
+
+      <author-cycle class="views content">
+        <section class="loader" selected>
+          <!-- Make a web component out of this -->
+          <div class="ring"><div></div><div></div><div></div><div></div></div>
+        </section>
+
+        <section class="home view">
+          <ul class="products">
+            <!-- Generated in js/views/home.js -->
+          </ul>
+        </section>
+      </author-cycle>
     </main>
 
-    <script src="js/portal/index.js"></script>
+    <footer>
+      <div class="width constraint">
+        Copyright &copy; <span class="year"></span> <span class="authorio logo">Author.io</span>
+      </div>
+    </footer>
+
+    <script type="module" src="js/index.js"></script>
   </body>
 </html>

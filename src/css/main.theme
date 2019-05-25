@@ -1,72 +1,113 @@
 custom-properties {
-	--red: hsl(11,74%,54%);
-	--green: hsl(89,82%,40%);
-	--blue: #0099FF;
-	--yellow: hsl(55,100%,64%);
+	/* COLORS ----------------------------------------------------------------- */
+	--white:       #FFFFFF;
+
+	--grey-0:      #F3F3F3;
+	--grey-1:      #E6E6E0;
+	--grey-2:      #D3D3D0;
+	--grey-3:      #959593;
+	--grey-4:      #777772;
+	--grey-5:      #595959;
+	--grey-6:      #424246;
+
+	--black:       #21221E;
+
+	--red:         #DB3A2E;
+	--red-dark:    #A72A24;
+	--prune:       #7A241E;
+
+	--green-light: #869F1E;
+	--green:       #6A7F15;
+	--green-dark:  #4D6010;
+
+	--blue:        #0C4FCB;
+	--blue-dark:   #0B3B99;
+
+	--yellow:      #F6CE60;
+	--goldenrod:   #BB8E02;
+
+	--sunset:      #FB624E;
+	--apricot:     #FCC7B4;
+
+	--azure-light: #2399F8;
+	--azure:       #007ACD;
+	--azure-dark:  #005C9A;
+
+
+	/* TEXT ------------------------------------------------------------------- */
 
 	--font-family: -apple-system, BlinkMacSystemFont, 'Avenir Next', Avenir, Helvetica, Arial, sans-serif;
-	--text-color: var(--grey-c10);
+	--text-color:  var(--grey-5);
 
-	--inline-block-border-radius: .236em;
-	--icon-border-radius: 2px;
+	/* LAYOUT ----------------------------------------------------------------- */
 
-	--main-primary-header-bg-color: var(--grey-c09);
-	--main-primary-header-text-color: white;
+	--default-border-radius: .236em;
 
-	--main-secondary-header-bg-color: white;
+	--anchor-color: var(--blue); /* AAA */
+	--anchor-hover-color: var(--azure-light);
+	--anchor-active-color: var(--blue-dark);
+	--anchor-disabled-color: var(--grey-2);
 
-	--main-content-padding-top: calc(var(--inline-block-margin-y) * (var(--typography-scale-ratio) * 3));
+	--header-secondary-background-color: transparent;
+	--header-secondary-border-width: 2px;
+	--header-secondary-border-style: solid;
+	--header-secondary-border-color: var(--grey-1);
 
-	--main-sidebar-bg-color: white;
-	--main-sidebar-button-hover-bg-color: var(--grey-n00);
+	--sidebar-link-border-color: var(--grey-0);
+	--sidebar-link-hover-bg-color: var(--grey-0);
+	--sidebar-link-hover-text-color: var(--black);
 
-	--main-footer-bg-color: var(--grey-n00);
-
-	--pane-border-width: 1px;
-	--pane-border-style: solid;
-	--pane-border-color: var(--grey-n04);
-
-	--pane-border: var(--pane-border-width) var(--pane-border-style) var(--pane-border-color);
+	--footer-bg-color: var(--white);
+  --footer-border-color: var(--grey-0);
 }
 
 components {
 	anchor {
 		@state initial {
-			color: var(--green);
-		}
-
-		@state hover {
-			color: color-mod(var(--green) lightness(44%));
+			color: var(--anchor-color);
 			text-decoration: underline;
 		}
 
+		@state hover {
+			color: var(--anchor-hover-color);
+		}
+
 		@state active {
-			color: color-mod(var(--green) lightness(38.2%));
+			color: var(--anchor-active-color);
 		}
 
 		@state disabled {
-			color: var(--grey-n04);
+			color: var(--anchor-disabled-color);
 			text-decoration: none;
 		}
 	}
 
 	button {
 		@state initial {
-			background: var(--grey-c09);
-			border-radius: var(--inline-block-border-radius);
-			color: white;
+			display: inline-flex;
+      justify-content: center;
+      align-items: center;
+			/* @chassis apply inline-block padding; */
+			padding: var(--inline-block-padding-y) var(--inline-block-padding-x);
+      vertical-align: middle;
+      text-align: center;
+      cursor: pointer;
 
-			svg.icon {
+			background: var(--azure);
+			border-radius: .236em;
+			color: var(--white);
+
+			& svg.icon {
 				stroke: currentColor;
 			}
 		}
 
 		@state hover {
-			background: color-mod(var(--grey-c09) lightness(55%));
+			background: var(--azure-light);
 		}
 
 		@state active {
-			background: color-mod(var(--grey-c09) lightness(44%));
+			background: var(--azure);
 		}
 
 		@state disabled {
@@ -75,42 +116,6 @@ components {
 
 		@state focus {
 			outline: 0;
-		}
-	}
-
-	anchor-button {
-		@state initial {
-			background: var(--grey-c09);
-			border-radius: var(--inline-block-border-radius);
-			color: white;
-
-			svg.icon {
-				stroke: currentColor;
-			}
-		}
-
-		@state hover {
-			background: color-mod(var(--grey-c09) lightness(55%));
-		}
-
-		@state active {
-			background: color-mod(var(--grey-c09) lightness(44%));
-		}
-
-		@state disabled {
-			opacity: .382;
-		}
-	}
-
-	tag {
-		@state initial {
-			background: var(--grey-n10);
-			border-radius: var(--inline-block-border-radius);
-			color: white;
-
-			& svg.icon {
-				stroke: currentColor;
-			}
 		}
 	}
 
@@ -127,20 +132,77 @@ components {
 				position: sticky;
 				top: 0;
 
-				border-bottom: 3px solid var(--grey-n03);
-				box-shadow: 0 3px 0 0 var(--grey-n03);
+				border-bottom: 3px solid var(--grey-1);
+				box-shadow: 0 3px 0 0 var(--grey-1);
 			}
 
 			tfoot {
-				border-top: 3px solid var(--grey-n03);
+				border-top: 3px solid var(--grey-1);
 			}
 
 			tbody tr td {
-				border-bottom: 1px solid var(--grey-n03);
+				border-bottom: 1px solid var(--grey-1);
 			}
 
 			tbody tr:last-child td {
 				border-bottom: 0;
+			}
+		}
+	}
+
+
+	author-layout-cell {
+		@state initial {
+			background: var(--grey-n00);
+			box-shadow: 0 0 0 2px black;
+		}
+	}
+
+	anchor-button {
+		@state initial {
+			background: var(--blue);
+			border-radius: .236em;
+			color: white;
+
+			& .icon {
+				stroke: currentColor;
+			}
+
+			& .test {
+				padding: .5em;
+				background: green;
+
+				& .test {
+					background: red;
+
+					& .test {
+						background: blue;
+					}
+				}
+			}
+		}
+
+		@state hover {
+			background: color-mod(var(--blue) lightness(55%));
+		}
+
+		@state active {
+			background: color-mod(var(--blue) lightness(44%));
+		}
+
+		@state disabled {
+			opacity: .382;
+		}
+	}
+
+	tag {
+		@state initial {
+			background: var(--green);
+			border-radius: .236em;
+			color: white;
+
+			& svg.icon {
+				stroke: currentColor;
 			}
 		}
 	}
@@ -157,7 +219,7 @@ components {
 		}
 	}
 
-	chassis-control {
+	author-control {
 		@state initial {}
 
 		@state disabled {
@@ -188,23 +250,24 @@ components {
 		}
 	}
 
-	chassis-optgroup-label {
+	author-optgroup-label {
 		@state initial {
 			font-weight: 700;
 		}
 	}
 
-	chassis-optgroup {
+	author-optgroup {
 		@state initial {
 			margin: 0 .618em .618em;
 			border: 1px solid var(--grey-n04);
 		}
 	}
 
-	chassis-select-title {
+	author-selected-options {
 		@state initial {
 			align-items: center;
 			justify-content: space-between;
+			z-index: 1;
 
 			svg {
 				width: 1em;
@@ -215,20 +278,7 @@ components {
 		}
 	}
 
-	chassis-options {
-		@state initial {
-			max-height: 16.18em;
-
-			background: white;
-			box-shadow:
-				inset 2px 0 0 0 var(--grey-n04),
-				inset -2px -2px 0 0 var(--grey-n04),
-				0 .236em 1em 0 color-mod(black alpha(10%))
-			;
-		}
-	}
-
-	chassis-option {
+	author-option {
 		@state initial {}
 
 		@state hover {
@@ -236,21 +286,41 @@ components {
 		}
 	}
 
-	chassis-datalist {
+	author-datalist {
 		@state initial {
+			position: relative;
+			display: flex;
+      flex-direction: column;
+			width: 100%;
+      vertical-align: middle;
+      outline: none;
+      cursor: pointer;
 			box-shadow: inset 0 -2px 0 0 var(--grey-n04);
 			transition: all ease-in-out .1s;
-		}
 
-		@state open {
-			box-shadow: inset 0 -2px 0 0 var(--blue);
+			author-options {
+				position: absolute;
+				top: 100%;
+				left: 0;
+				height: 0;
+				max-height: 16.18em;
+				min-width: 100%;
+				overflow: auto;
 
-			chassis-options {
+				background: white;
 				box-shadow:
 					inset 2px 0 0 0 var(--blue),
 					inset -2px -2px 0 0 var(--blue),
 					0 .236em 1em 0 color-mod(black alpha(10%))
 				;
+			}
+		}
+
+		@state open {
+			box-shadow: inset 0 -2px 0 0 var(--blue);
+
+			author-options {
+				height: auto;
 			}
 		}
 
@@ -263,16 +333,53 @@ components {
 		}
 	}
 
-	chassis-select {
+	author-select {
 		@state initial {
+			position: relative;
+			display: flex;
+      flex-direction: column;
+			width: 100%;
+      vertical-align: middle;
+      outline: none;
+      cursor: pointer;
+
+			border-radius: .236em;
 			box-shadow: inset 0 0 0 2px var(--grey-n04);
 			transition: all ease-in-out .1s;
+
+			& author-options {
+				height: 0;
+				max-height: 16.18em;
+				min-width: 100%;
+				overflow: auto;
+
+				border-radius: 0 0 .236em .236em;
+				background: white;
+				box-shadow:
+					inset 2px 0 0 0 var(--grey-n04),
+					inset -2px -2px 0 0 var(--grey-n04),
+					0 .236em 1em 0 color-mod(black alpha(10%))
+				;
+			}
+
+			/* author-option[selected] {
+				background: var(--blue);
+				color: white;
+			} */
 		}
 
 		@state open {
 			box-shadow: inset 0 0 0 2px var(--blue);
+			border-radius: .236em .236em 0 0;
 
-			chassis-options {
+			& author-options {
+				position: absolute;
+				top: 100%;
+			  left: 0;
+				z-index: 999;
+
+				height: auto;
+
 				box-shadow:
 					inset 2px 0 0 0 var(--blue),
 					inset -2px -2px 0 0 var(--blue),
@@ -283,10 +390,38 @@ components {
 
 		@state focus {
 			box-shadow: inset 0 0 0 2px var(--blue);
+
+			author-options {
+				box-shadow: inset 0 0 0 2px var(--blue);
+			}
 		}
 
 		@state disabled {
 			opacity: .382;
 		}
+
+		/* @variation multiple {
+			@state initial {}
+		} */
+
+		@state multiple {
+			author-options {
+				height: auto;
+
+				box-shadow:
+					inset 2px 2px 0 0 var(--grey-n04),
+					inset -2px -2px 0 0 var(--grey-n04),
+					inset 0 0 1em 0 color-mod(black alpha(10%))
+				;
+			}
+
+			/* author-selected-options {
+				display: none;
+			} */
+		}
+
+		/* @state invalid {
+			border: 3px solid red;
+		} */
 	}
 }

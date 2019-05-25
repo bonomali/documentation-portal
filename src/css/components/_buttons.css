@@ -1,7 +1,27 @@
-& button.bare {
-  @chassis new button {
-    @state initial {
-      color: var(--text-color);
+& button,
+& .button {
+  &.bare {
+    @chassis new button {
+      @state initial {
+        background: transparent;
+        border-radius: .236em;
+        padding: 0;
+      }
+
+      @state active {
+        background: var(--grey-2);
+
+        & svg.icon {
+          stroke: var(--black);
+        }
+      }
+    }
+  }
+
+  @chassis vp-width to medium {
+    & svg.icon {
+      width: 44px;
+      height: 44px;
     }
   }
 }

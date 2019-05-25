@@ -1,0 +1,120 @@
+[
+  {
+    "id": "fenix",
+    "title": "Fenix Web Server",
+    "description": "Graphical desktop web server for smart devs.",
+    "nav": [
+      {
+        "label": "Documentation",
+        "type": "internal",
+        "view": "docs"
+      },
+
+      {
+        "label": "Guides",
+        "type": "internal",
+        "view": "guides"
+      },
+
+      {
+        "label": "Website",
+        "type": "external",
+        "url": "https://preview.fenixwebserver.com"
+      }
+    ]
+  },
+
+  {
+    "id": "ngn",
+    "title": "NGN Platform",
+    "description": "Isomorphic JavaScript Systems Development Platform.",
+    "nav": [
+      {
+        "label": "Documentation",
+        "type": "internal",
+        "view": "docs"
+      },
+
+      {
+        "label": "Guides",
+        "type": "internal",
+        "view": "guides"
+      },
+
+      {
+        "label": "GitHub",
+        "type": "external",
+        "url": "https://github.com/ngnjs"
+      }
+    ]
+  },
+
+  {
+    "id": "chassis",
+    "title": "NGN Chassis",
+    "description": "Typography-Powered CSS4 pre-processor and framework.",
+    "nav": [
+      {
+        "label": "Documentation",
+        "type": "internal",
+        "view": "docs"
+      },
+
+      {
+        "label": "Guides",
+        "type": "internal",
+        "view": "guides"
+      }
+    ]
+  },
+
+  {
+    "id": "jetngn",
+    "title": "JetNGN",
+    "description": "Lightweight, customizable library for building interactive web applications.",
+    "nav": [
+      {
+        "label": "Documentation",
+        "type": "internal",
+        "view": "docs"
+      },
+
+      {
+        "label": "Guides",
+        "type": "internal",
+        "view": "guides"
+      },
+
+      {
+        "label": "GitHub",
+        "type": "external",
+        "url": "https://github.com/ngn-jet"
+      }
+    ]
+  },
+
+  {
+    "id": "ngnx",
+    "title": "NGN Extensions",
+    "description": "Useful add-ons for NGN.",
+    "nav": [
+      {
+        "label": "Documentation",
+        "type": "internal",
+        "view": "docs"
+      },
+
+      {
+        "label": "Guides",
+        "type": "internal",
+        "view": "guides"
+      },
+
+      {
+        "label": "GitHub",
+        "type": "external",
+        "url": "https://github.com/ngnjs/NGNX"
+      }
+    ]
+  }
+]

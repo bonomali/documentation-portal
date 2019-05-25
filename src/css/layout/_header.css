@@ -1,116 +1,164 @@
-& > header {
-  @chassis z-index front;
-  flex: 0 0 auto;
+& > header section {
+  margin-bottom: 0;
 
   &.primary {
-    background: var(--main-primary-header-bg-color);
+    padding: 1rem 0;
+    background: var(--blue);
 
-    & .width.constraint {
+    & > .width.constraint {
       display: flex;
       align-items: center;
-      @chassis apply inline-block padding-y;
     }
 
-    & a.previous {
-      display: block;
-      margin-right: var(--inline-block-margin-x);
-      color: var(--main-primary-header-text-color);
-      border-radius: .236em;
+    & .title {
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
 
-      &:hover {
-        background: var(--main-primary-header-text-color);
-        color: black;
-      }
-    }
+      & h1 {
+        display: flex;
+        align-items: baseline;
 
-    & h1 {
-      margin: 0 var(--inline-block-padding-x) 0 0;
-      @chassis font-size large;
-      color: var(--main-primary-header-text-color);
-    }
+        margin: 0 var(--inline-block-padding-x) 0 0;
 
-    & .version.tag {
-      margin: 0 auto 0 0;
-    }
+        @chassis font-size root;
+        font-weight: normal;
+        color: var(--white);
 
-    & button.menu {
-      @chassis new button {
-        @state initial {
-          padding: 0;
-          @chassis font-size small;
-          color: white;
-          opacity: .618;
-        }
-
-        @state hover {
-          opacity: 1;
+        & a.authorio.logo {
+          display: flex;
+          margin-right: var(--inline-block-padding-x);
+          color: var(--white);
+          text-decoration: none;
         }
       }
 
-      & .icon {
-        height: 2em;
+      & .version.tag {
+        @chassis new tag {
+          @state initial {
+            background: var(--blue-dark);
+            color: var(--white);
+          }
+        }
       }
     }
 
-    & .tools {
-      display: none;
-      margin: 0 0 0 var(--inline-block-padding-x);
-    }
+    & nav {
+      display: flex;
+      align-items: center;
+      margin: 0;
 
-    & chassis-control.search {
-      @chassis extend chassis-control {
-        @state initial {
-          margin: 0;
-          @chassis font-size small;
-          opacity: .618;
-          color: white;
-          background: var(--grey-c10);
-          border-radius: var(--inline-block-border-radius);
-        }
-
-        @state focus-within {
-          opacity: 1;
-          background: var(--grey-c08);
-        }
-      }
-
-      & > input {
-        margin: 0;
-        box-shadow: none;
-
-        &::placeholder {
-          color: color-mod(white a(38.2%));
-        }
-      }
-
-      & .icon {
-        color: white;
-      }
-    }
-
-    @chassis vp-width > small {
-      & button.menu {
+      & h3 {
         display: none;
       }
 
-      & .tools {
-        display: block;
+      & > a {
+        margin-left: var(--inline-block-padding-x);
+        opacity: .618;
+
+        /* @chassis font-size small; */
+        color: var(--white);
+        text-transform: uppercase;
+        text-decoration: none;
+
+        & .label {
+          display: none;
+        }
+
+        & svg.icon {
+          stroke: var(--white);
+          fill: var(--white);
+        }
+
+        &:first-of-type {
+          margin-left: 0;
+        }
+
+        &:hover {
+          opacity: 1;
+          text-decoration: underline;
+        }
       }
     }
   }
 
   &.secondary {
-    background: var(--main-secondary-header-bg-color);
-    border-bottom: 1px solid var(--grey-n04);
+    display: flex;
+    align-items: center;
 
-    @chassis font-size small;
+    background: var(--header-secondary-background-color);
+    border-bottom: var(--header-secondary-border-width) var(--header-secondary-border-style) var(--header-secondary-border-color);
 
-    & .width.constraint {
-      @chassis apply inline-block padding-y;
+    & .mobile-only {
+      flex: 0 0 auto;
+      display: flex;
+      align-self: stretch;
+      align-items: center;
+      padding-right: var(--layout-gutter);
     }
 
-    & .breadcrumb {
+    & h2 {
+      flex: 1 1 auto;
       margin: 0;
+      font-family: var(--font-family);
+      @chassis font-size large;
+    }
+
+    & .search {
+      flex: 1 1 auto;
+
+      & .input-wrapper {
+        display: flex;
+        align-items: center;
+        padding-left: var(--layout-gutter);
+
+        @chassis vp-width from medium {
+          padding-right: var(--layout-gutter);
+        }
+      }
+
+      & input {
+        @chassis new input {
+          @state initial {
+            box-shadow: none; /* TODO This shouldn't be necessary, this is a bug in Chassis */
+            @chassis font-size large;
+          }
+        }
+      }
+    }
+
+    & nav {
+      display: flex;
+      align-items: baseline;
+      margin: 0;
+
+      & h3 {
+        display: none;
+      }
+
+      & > a {
+        margin-left: var(--inline-block-padding-x);
+        text-decoration: none;
+
+        &:hover {
+          text-decoration: underline;
+        }
+
+        &:first-child {
+          margin-left: 0;
+        }
+      }
+    }
+
+    @chassis vp-width from medium {
+      & > .width.constraint {
+        align-items: baseline;
+      }
+
+      & .content {
+        display: flex;
+        align-items: baseline;
+      }
     }
   }
 }
