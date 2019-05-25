@@ -1,8 +1,8 @@
 import ViewRegistry from '../../lib/ngn-ponyfills-vdom.js'
-import Header from './header.js'
+import SecondaryHeader from './header/secondary.js'
 
 const SearchBar = new ViewRegistry({
-  parent: Header,
+  parent: SecondaryHeader,
   selector: 'author-control.search',
   namespace: 'search.'
 })

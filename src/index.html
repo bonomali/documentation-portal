@@ -81,31 +81,35 @@
     </header>
 
     <main>
-      <aside class="hidden sidebar">
-        <author-drawer position="right" inert>
-          <h3>Sidebar</h3>
-
-          <nav>
-            <h3>Sections Menu</h3>
-
-            <div class="sections">
-
-            </div>
-          </nav>
-        </author-drawer>
-      </aside>
-
-      <author-cycle class="views content">
-        <section class="loader" selected>
+      <author-cycle class="app">
+        <div class="loader" selected>
           <!-- Make a web component out of this -->
           <div class="ring"><div></div><div></div><div></div><div></div></div>
-        </section>
+        </div>
 
-        <section class="home view">
-          <ul class="products">
-            <!-- Generated in js/views/home.js -->
-          </ul>
-        </section>
+        <div class="main">
+          <aside class="hidden sidebar">
+            <author-drawer position="right" inert>
+              <h3>Sidebar</h3>
+
+              <nav>
+                <h3>Sections Menu</h3>
+
+                <div class="sections">
+
+                </div>
+              </nav>
+            </author-drawer>
+          </aside>
+
+          <author-cycle class="content">
+            <section class="home" selected>
+              <ul class="products">
+                <!-- Generated in js/views/home.js -->
+              </ul>
+            </section>
+          </author-cycle>
+        </div>
       </author-cycle>
     </main>
 

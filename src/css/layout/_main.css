@@ -3,125 +3,7 @@
   display: flex;
   @chassis constrain-width;
 
-  & > .sidebar,
-  & > .content > section {
-    padding-top: calc(3 * var(--inline-block-margin-y));
-  }
-
-  & > .sidebar {
-    display: none;
-    overflow: auto;
-    margin: 0;
-
-    & h3 {
-      display: none;
-    }
-
-    & nav {
-      & h3 {
-        display: none;
-      }
-
-      & .section {
-        border-radius: var(--default-border-radius) 0 0 var(--default-border-radius);
-
-        & .header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          @chassis apply inline-block padding;
-          color: var(--anchor-color);
-        }
-
-        &:hover {
-          & .header {
-            cursor: pointer;
-            text-decoration: underline;
-          }
-        }
-
-        &.selected {
-          background: var(--sidebar-link-hover-bg-color);
-
-          & .header {
-            color: var(--sidebar-link-hover-text-color);
-            pointer-events: none;
-          }
-
-          &:hover .header {
-            text-decoration: none;
-          }
-        }
-
-        &.accordion {
-          & > .header {
-            display: flex;
-            border-bottom: 1px solid var(--white);
-
-            & svg.icon {
-              margin-left: var(--inline-block-padding-x);
-            }
-          }
-
-          & .children {
-            display: none;
-            @chassis apply inline-block padding;
-
-            & > li {
-              @chassis apply inline-block padding-bottom padding-left;
-              @chassis font-size small;
-              color: var(--anchor-hover-color);
-              /* text-align: right; */
-
-              &:last-of-type {
-                margin-bottom: 0;
-              }
-
-              &:hover {
-                text-decoration: underline;
-                cursor: pointer;
-              }
-            }
-          }
-
-          &:hover > .header svg.icon {
-            background: var(--grey-0);
-            border-radius: var(--default-border-radius);
-          }
-
-          &.selected .children {
-            display: block;
-          }
-        }
-      }
-    }
-
-    @chassis vp-width from medium {
-      position: sticky;
-      top: 0;
-
-      flex: 0 0 23.6%;
-      align-self: flex-start;
-
-      display: block;
-      min-width: 200px;
-      max-width: 260px;
-
-      & + .content {
-        @chassis constrain-width gutter(6.18%);
-        /* margin-bottom: calc(5 * var(--inline-block-margin-y)); */
-        padding-right: 0;
-        border-left: 1px solid var(--grey-1);
-      }
-
-      &.hidden + .content {
-        padding-left: 0;
-        border-left: none;
-      }
-    }
-  }
-
-  & > .content {
+  & .app {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
@@ -130,18 +12,9 @@
     max-height: 10000px;
     transition: max-height 1s ease-out; */
 
-    & > section {
-      & h2,
-      & h3 {
-        @chassis font-size larger;
-        border-bottom: 1px solid var(--grey-1);
-      }
-
-      & h4 {
-        @chassis font-size root;
-      }
-
-      @chassis import dir(views);
+    & > * {
+      flex: 1 1 auto;
+      display: flex;
 
       &[fade-in] {
         animation: fadein 618ms;
@@ -150,6 +23,151 @@
       &[fade-out] {
         opacity: 0;
         animation: fadeout 382ms;
+      }
+    }
+
+    & .loader {
+      align-items: center;
+      justify-content: center;
+    }
+
+    & .main {
+      & > .sidebar,
+      & > .content > section {
+        padding-top: calc(3 * var(--inline-block-margin-y));
+      }
+
+      & > .sidebar {
+        display: none;
+        overflow: auto;
+        margin: 0;
+
+        & h3 {
+          display: none;
+        }
+
+        & nav {
+          & h3 {
+            display: none;
+          }
+
+          & .section {
+            border-radius: var(--default-border-radius) 0 0 var(--default-border-radius);
+
+            & .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              @chassis apply inline-block padding;
+              color: var(--anchor-color);
+            }
+
+            &:hover {
+              & .header {
+                cursor: pointer;
+                text-decoration: underline;
+              }
+            }
+
+            &.selected {
+              background: var(--sidebar-link-hover-bg-color);
+
+              & .header {
+                color: var(--sidebar-link-hover-text-color);
+                pointer-events: none;
+              }
+
+              &:hover .header {
+                text-decoration: none;
+              }
+            }
+
+            &.accordion {
+              & > .header {
+                display: flex;
+                border-bottom: 1px solid var(--white);
+
+                & svg.icon {
+                  margin-left: var(--inline-block-padding-x);
+                }
+              }
+
+              & .children {
+                display: none;
+                @chassis apply inline-block padding;
+
+                & > li {
+                  @chassis apply inline-block padding-bottom padding-left;
+                  @chassis font-size small;
+                  color: var(--anchor-hover-color);
+                  /* text-align: right; */
+
+                  &:last-of-type {
+                    margin-bottom: 0;
+                  }
+
+                  &:hover {
+                    text-decoration: underline;
+                    cursor: pointer;
+                  }
+                }
+              }
+
+              &:hover > .header svg.icon {
+                background: var(--grey-0);
+                border-radius: var(--default-border-radius);
+              }
+
+              &.selected .children {
+                display: block;
+              }
+            }
+          }
+        }
+
+        @chassis vp-width from medium {
+          position: sticky;
+          top: 0;
+
+          flex: 0 0 23.6%;
+          align-self: flex-start;
+
+          display: block;
+          min-width: 200px;
+          max-width: 260px;
+
+          & + .content {
+            @chassis constrain-width gutter(6.18%);
+            /* margin-bottom: calc(5 * var(--inline-block-margin-y)); */
+            padding-right: 0;
+            border-left: 1px solid var(--grey-1);
+          }
+
+          &.hidden + .content {
+            padding-left: 0;
+            border-left: none;
+          }
+        }
+      }
+
+      & > .content {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+
+        & > section {
+          & h2,
+          & h3 {
+            @chassis font-size larger;
+            border-bottom: 1px solid var(--grey-1);
+          }
+
+          & h4 {
+            @chassis font-size root;
+          }
+
+          @chassis import dir(sections);
+        }
       }
     }
 

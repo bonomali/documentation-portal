@@ -1,9 +1,9 @@
 import ViewRegistry from '../../lib/ngn-ponyfills-vdom.js'
-import ViewController from '../registries/view-controller.js'
+import Content from '../registries/content.js'
 
-export const HomeView = new ViewRegistry({
-  parent: ViewController,
-  selector: '.home.view',
+const Home = new ViewRegistry({
+  parent: Content,
+  selector: '.home',
   namespace: 'home.',
 
   references: {
@@ -12,22 +12,22 @@ export const HomeView = new ViewRegistry({
 
   events: {
     populate: products => {
-      HomeView.render(HomeView.ref.productList, products.map(product => {
-        return HomeView.createElement('li', {
+      Home.render(Home.ref.productList, products.map(product => {
+        return Home.createElement('li', {
           class: classNames(product.id, 'product')
         }, [
-          HomeView.createElement('h2', {
+          Home.createElement('h2', {
             class: 'title'
           }, [product.title]),
 
-          HomeView.createElement('section', {
+          Home.createElement('section', {
             class: 'info'
           }, [
-            HomeView.createElement('p', {
+            Home.createElement('p', {
               class: 'description'
             }, [product.description]),
 
-            HomeView.createElement('nav', {}, product.nav.map(item => {
+            Home.createElement('nav', {}, product.nav.map(item => {
               let cfg = {
                 tag: 'button',
                 attributes: {},
@@ -42,22 +42,24 @@ export const HomeView = new ViewRegistry({
               } else {
                 cfg.tag = 'button'
                 cfg.attributes.class = 'bare'
-                cfg.on.click = evt => ViewController.emit('goto', {
+                cfg.on.click = evt => Content.emit('show', {
                   view: product.id,
                   path: item.path
                 })
               }
 
-              return HomeView.createElement(cfg)
+              return Home.createElement(cfg)
             }))
           ])
         ])
       }))
-      .then(element => HomeView.emit('populated'))
+      .then(element => Home.emit('populated'))
       .catch(err => console.error(err))
     }
   }
 })
+
+export default Home
 
 // return [
 //   ['li', {
@@ -76,7 +78,7 @@ export const HomeView = new ViewRegistry({
 // ]
 
 // populate (products) {
-//   HomeView.render(HomeView.ref.productList, products.map(product => [
+//   Home.render(Home.ref.productList, products.map(product => [
 //     'li', {
 //       class: classNames(product.id, 'product')
 //     }, [

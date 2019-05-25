@@ -1,7 +1,9 @@
 import ViewRegistry from '../../lib/ngn-ponyfills-vdom.js'
+import PrimaryHeader from './header/primary.js'
 
 const VersionSelector = new ViewRegistry({
-  selector: '.authorio.docs.portal > header author-control.version',
+  parent: PrimaryHeader,
+  selector: 'author-control.version',
   namespace: 'version-selector.',
 
   properties: {
