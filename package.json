@@ -17,7 +17,7 @@
   "dependencies": {
     "@author.io/element-base": "^1.1.4",
     "@author.io/element-control": "^1.1.0",
-    "@author.io/element-cycle": "^1.0.2",
+    "@author.io/element-cycle": "^1.0.4",
     "@author.io/element-datalist": "^1.1.1",
     "@author.io/element-drawer": "^1.0.1",
     "@author.io/element-menu": "^1.0.18",

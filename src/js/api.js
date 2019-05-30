@@ -17,10 +17,14 @@ export default class APIConstructor {
   }
 
   fetchProducts (callback) {
-    this.jsonRequest('config/products.json', callback)
+    this.jsonRequest(`${this.baseURL}/config/products.json`, callback)
   }
 
-  fetchDocs (callback) {
-    this.jsonRequest(this.baseURL, callback)
+  fetchManifest (url, callback) {
+    this.jsonRequest(url, callback)
+  }
+
+  fetchDocs (url, callback) {
+    this.jsonRequest(url, callback)
   }
 }

@@ -1,175 +1,91 @@
-& > header section {
-  margin-bottom: 0;
+& > header {
+  padding: 1rem 0;
+  background: var(--blue);
 
-  &.primary {
-    padding: 1rem 0;
-    background: var(--blue);
+  & > .width.constraint {
+    display: flex;
+    align-items: center;
+  }
 
-    & > .width.constraint {
-      display: flex;
-      align-items: center;
-    }
+  & .title {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
 
-    & .title {
+    & h1 {
       flex: 1 1 auto;
       display: flex;
-      align-items: center;
+      align-items: baseline;
+      justify-content: space-between;
 
-      & h1 {
-        flex: 1 1 auto;
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-
-        margin: 0;
-
-        @chassis font-size root;
-        font-weight: normal;
-        color: var(--white);
-
-        & a.authorio.logo {
-          display: flex;
-          margin-right: var(--inline-block-padding-x);
-          color: var(--white);
-          text-decoration: none;
-        }
-
-        @chassis vp-width from medium {
-          flex: 0 0 auto;
-          margin-right: var(--inline-block-padding-x);
-        }
-      }
-
-      & .version.tag {
-        @chassis new tag {
-          @state initial {
-            background: var(--blue-dark);
-            color: var(--white);
-          }
-        }
-      }
-    }
-
-    & nav {
-      display: none;
-      align-items: center;
       margin: 0;
 
-      & h3 {
-        display: none;
-      }
+      @chassis font-size root;
+      font-weight: normal;
+      color: var(--white);
 
-      & > a {
-        margin-left: var(--inline-block-padding-x);
-        opacity: .618;
-
-        /* @chassis font-size small; */
+      & a.authorio.logo {
+        display: flex;
+        margin-right: var(--inline-block-padding-x);
         color: var(--white);
-        text-transform: uppercase;
         text-decoration: none;
-
-        & .label {
-          display: none;
-        }
-
-        & svg.icon {
-          stroke: var(--white);
-          fill: var(--white);
-        }
-
-        &:first-of-type {
-          margin-left: 0;
-        }
-
-        &:hover {
-          opacity: 1;
-          text-decoration: underline;
-        }
       }
 
       @chassis vp-width from medium {
-        display: flex;
+        flex: 0 0 auto;
+        margin-right: var(--inline-block-padding-x);
+      }
+    }
+
+    & .version.tag {
+      @chassis new tag {
+        @state initial {
+          background: var(--blue-dark);
+          color: var(--white);
+        }
       }
     }
   }
 
-  &.secondary {
-    display: flex;
+  & nav {
+    display: none;
     align-items: center;
+    margin: 0;
 
-    background: var(--header-secondary-background-color);
-    border-bottom: var(--header-secondary-border-width) var(--header-secondary-border-style) var(--header-secondary-border-color);
-
-    & .mobile-only {
-      flex: 0 0 auto;
-      display: flex;
-      align-self: stretch;
-      align-items: center;
-      padding-right: var(--layout-gutter);
+    & h3 {
+      display: none;
     }
 
-    & h2 {
-      flex: 1 1 auto;
-      margin: 0;
-      font-family: var(--font-family);
-      @chassis font-size large;
-    }
+    & > a {
+      margin-left: var(--inline-block-padding-x);
+      opacity: .618;
 
-    & .search {
-      flex: 1 1 auto;
+      /* @chassis font-size small; */
+      color: var(--white);
+      text-transform: uppercase;
+      text-decoration: none;
 
-      & .input-wrapper {
-        display: flex;
-        align-items: center;
-        padding-left: var(--layout-gutter);
-
-        @chassis vp-width from medium {
-          padding-right: var(--layout-gutter);
-        }
-      }
-
-      & input {
-        @chassis new input {
-          @state initial {
-            box-shadow: none; /* TODO This shouldn't be necessary, this is a bug in Chassis */
-            @chassis font-size large;
-          }
-        }
-      }
-    }
-
-    & nav {
-      display: flex;
-      align-items: baseline;
-      margin: 0;
-
-      & h3 {
+      & .label {
         display: none;
       }
 
-      & > a {
-        margin-left: var(--inline-block-padding-x);
-        text-decoration: none;
+      & svg.icon {
+        stroke: var(--white);
+        fill: var(--white);
+      }
 
-        &:hover {
-          text-decoration: underline;
-        }
+      &:first-of-type {
+        margin-left: 0;
+      }
 
-        &:first-child {
-          margin-left: 0;
-        }
+      &:hover {
+        opacity: 1;
+        text-decoration: underline;
       }
     }
 
     @chassis vp-width from medium {
-      & > .width.constraint {
-        align-items: baseline;
-      }
-
-      & .content {
-        display: flex;
-        align-items: baseline;
-      }
+      display: flex;
     }
   }
 }

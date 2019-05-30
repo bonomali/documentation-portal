@@ -1,119 +1,171 @@
 [
   {
-    "id": "fenix",
-    "title": "Fenix Web Server",
-    "description": "Graphical desktop web server for smart devs.",
-    "nav": [
+    "label": "Productivity and Collaboration",
+    "products": [
       {
-        "label": "Documentation",
-        "type": "internal",
-        "path": "docs"
-      },
+        "name": "fenix",
+        "title": "Fenix Web Server",
+        "description": "Graphical desktop web server for smart devs.",
+        "nav": [
+          {
+            "label": "Documentation",
+            "path": "docs"
+          },
 
-      {
-        "label": "Guides",
-        "type": "internal",
-        "path": "guides"
-      },
+          {
+            "label": "Guides",
+            "path": "guides"
+          },
 
-      {
-        "label": "Website",
-        "type": "external",
-        "url": "https://preview.fenixwebserver.com"
+          {
+            "label": "Website",
+            "href": "https://preview.fenixwebserver.com",
+            "external": "true"
+          }
+        ]
       }
     ]
   },
 
   {
-    "id": "ngn",
-    "title": "NGN Platform",
-    "description": "Isomorphic JavaScript Systems Development Platform.",
-    "nav": [
+    "label": "Development Tooling",
+    "products": [
       {
-        "label": "Documentation",
-        "type": "internal",
-        "path": "docs"
+        "name": "ngn",
+        "title": "NGN Platform",
+        "description": "Isomorphic, event-based JavaScript systems development Platform.",
+        "manifest": "http://localhost:8000/",
+        "nav": [
+          {
+            "label": "Documentation",
+            "path": "docs"
+          },
+
+          {
+            "label": "Guides",
+            "path": "guides"
+          },
+
+          {
+            "label": "GitHub",
+            "href": "https://github.com/ngnjs",
+            "external": "true"
+          }
+        ]
       },
 
       {
-        "label": "Guides",
-        "type": "internal",
-        "path": "guides"
+        "name": "chassis",
+        "title": "NGN Chassis",
+        "description": "Typography-Powered CSS4 pre-processor and framework.",
+        "nav": [
+          {
+            "label": "Documentation",
+            "path": "docs"
+          },
+
+          {
+            "label": "Guides",
+            "path": "guides"
+          }
+        ]
       },
 
       {
-        "label": "GitHub",
-        "type": "external",
-        "url": "https://github.com/ngnjs"
+        "name": "ngn-data",
+        "title": "NGN Data",
+        "description": "Powerful isomorphic data management for your web or native applications.",
+        "nav": [
+          {
+            "label": "Documentation",
+            "path": "docs"
+          },
+
+          {
+            "label": "Guides",
+            "path": "guides"
+          },
+
+          {
+            "label": "CodePen",
+            "href": "https://codepen.io/coreybutler/pen/WGazvE",
+            "external": "true"
+          }
+        ]
+      },
+
+      {
+        "name": "jetngn",
+        "title": "JetNGN",
+        "description": "Lightweight, reactive, compositional Javascript library for building interactive web applications. Based on NGN's data-driven, event-based architecture.",
+        "nav": [
+          {
+            "label": "Documentation",
+            "path": "docs"
+          },
+
+          {
+            "label": "Guides",
+            "path": "guides"
+          },
+
+          {
+            "label": "GitHub",
+            "href": "https://github.com/ngn-jet",
+            "external": "true"
+          }
+        ]
+      },
+
+      {
+        "name": "ngnx",
+        "title": "NGN Extensions",
+        "description": "Useful add-ons for NGN.",
+        "nav": [
+          {
+            "label": "Documentation",
+            "path": "docs"
+          },
+
+          {
+            "label": "Guides",
+            "path": "guides"
+          },
+
+          {
+            "label": "GitHub",
+            "href": "https://github.com/ngnjs/NGNX",
+            "external": "true"
+          }
+        ]
       }
     ]
   },
 
   {
-    "id": "chassis",
-    "title": "NGN Chassis",
-    "description": "Typography-Powered CSS4 pre-processor and framework.",
-    "nav": [
+    "label": "Environment Management",
+    "products": [
       {
-        "label": "Documentation",
-        "type": "internal",
-        "path": "docs"
-      },
+        "name": "nvm-windows",
+        "title": "NVM For Windows",
+        "description": "Node.js version management utility for Windows.",
+        "nav": [
+          {
+            "label": "Documentation",
+            "path": "docs"
+          },
 
-      {
-        "label": "Guides",
-        "type": "internal",
-        "path": "guides"
-      }
-    ]
-  },
+          {
+            "label": "Guides",
+            "path": "guides"
+          },
 
-  {
-    "id": "jetngn",
-    "title": "JetNGN",
-    "description": "Lightweight, customizable library for building interactive web applications.",
-    "nav": [
-      {
-        "label": "Documentation",
-        "type": "internal",
-        "path": "docs"
-      },
-
-      {
-        "label": "Guides",
-        "type": "internal",
-        "path": "guides"
-      },
-
-      {
-        "label": "GitHub",
-        "type": "external",
-        "url": "https://github.com/ngn-jet"
-      }
-    ]
-  },
-
-  {
-    "id": "ngnx",
-    "title": "NGN Extensions",
-    "description": "Useful add-ons for NGN.",
-    "nav": [
-      {
-        "label": "Documentation",
-        "type": "internal",
-        "path": "docs"
-      },
-
-      {
-        "label": "Guides",
-        "type": "internal",
-        "path": "guides"
-      },
-
-      {
-        "label": "GitHub",
-        "type": "external",
-        "url": "https://github.com/ngnjs/NGNX"
+          {
+            "label": "GitHub",
+            "href": "https://github.com/coreybutler/nvm-windows",
+            "external": "true"
+          }
+        ]
       }
     ]
   }

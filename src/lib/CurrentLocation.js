@@ -1,4 +1,4 @@
-export default class CurrentState {
+export default class CurrentLocation {
   static get hash () {
     return window.location.hash
   }

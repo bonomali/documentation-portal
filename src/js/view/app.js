@@ -21,6 +21,18 @@ const App = new ViewRegistry({
 
   initialState: 'loading',
 
+  events: {
+    content: {
+      loading () {
+        App.state = 'loading'
+      },
+
+      loaded () {
+        App.state = 'ready'
+      }
+    }
+  },
+
   init () {
     this.self.on({
       beforechange: evt => {
@@ -30,7 +42,10 @@ const App = new ViewRegistry({
 
         this.self.element.setAttribute('transition', '')
         currentSelection.element.setAttribute('fade-out', '')
-        setTimeout(next, 382)
+
+        // NOTE: If the timeout duration changes, it also must be updated
+        // in css/layout/_main.css and js/app/content.js
+        setTimeout(next, 236)
       },
 
       change: evt => {
@@ -39,9 +54,12 @@ const App = new ViewRegistry({
         this.self.element.removeAttribute('transition')
         previousSelection.element.removeAttribute('fade-out')
         currentSelection.element.setAttribute('fade-in', '')
+
+        // NOTE: If the timeout duration changes, it also must be updated
+        // in css/layout/_main.css
         setTimeout(() => {
           currentSelection.element.removeAttribute('fade-in')
-        }, 618)
+        }, 382)
       }
     })
   }

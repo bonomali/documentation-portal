@@ -1,4 +1,5 @@
 import ViewRegistry from '../../lib/ngn-ponyfills-vdom.js'
+import App from './app.js'
 
 const Footer = new ViewRegistry({
   selector: '.authorio.docs.portal > footer',

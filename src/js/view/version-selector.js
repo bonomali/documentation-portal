@@ -1,8 +1,8 @@
 import ViewRegistry from '../../lib/ngn-ponyfills-vdom.js'
-import PrimaryHeader from './header/primary.js'
+import Header from './header.js'
 
 const VersionSelector = new ViewRegistry({
-  parent: PrimaryHeader,
+  parent: Header,
   selector: 'author-control.version',
   namespace: 'version-selector.',
 

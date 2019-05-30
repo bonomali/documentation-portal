@@ -1,36 +1,85 @@
-import CurrentState from '../lib/CurrentState.js'
+import CurrentLocation from '../lib/CurrentLocation.js'
 import APIConstructor from './api.js'
+import Product from './data/product.js'
 
-import PrimaryHeader from './registries/header/primary.js'
-import VersionSelector from './registries/version-selector.js'
-import SecondaryHeader from './registries/header/secondary.js'
-import SearchBar from './registries/search-control.js'
-import Sidebar from './registries/sidebar.js'
-import Footer from './registries/footer.js'
+import Header from './view/header.js'
+import VersionSelector from './view/version-selector.js'
+import Search from './view/search.js'
+import Sidebar from './view/sidebar.js'
+import Content from './view/content.js'
+import Footer from './view/footer.js'
 
-import App from './registries/app.js'
-import Content from './registries/content.js'
+import App from './view/app.js'
+import Workspace from './view/workspace.js'
 
 import Home from './content/home.js'
+import Docs from './content/docs.js'
 
+// TEMP: Remove when NGN2 is available
 NGN.Queue = NGN.Tasks
 
-const API = new APIConstructor({
-  baseURL: 'http://localhost:8000/',
+export const API = new APIConstructor({
+  baseURL: 'http://localhost:8016/',
   credentials: {}
+})
+
+export const ProductCategories = new NGN.DATA.Store({
+  model: new NGN.DATA.Model({
+    fields: {
+      category: String
+    },
+
+    relationships: {
+      products: [Product]
+    }
+  })
 })
 
 NGN.DOM.ready(() => {
   NGN.DOM.svg.update()
   Footer.emit('populate', new Date().getFullYear())
 
-  API.fetchProducts(products => {
-    NGN.BUS.funnelOnce(['content.populated', 'content.home.populated'], () => {
-      Content.emit('show', 'home')
-      App.state = 'ready'
+  API.fetchProducts(categories => {
+    ProductCategories.once('load', () => {
+      Sidebar.emit('populate', ProductCategories.records.map(category => ({
+        label: category.label,
+        children: category.products.records.map(product => ({
+          label: product.title
+        }))
+      })))
     })
 
-    Home.emit('populate', products)
-    Content.emit('populate', products)
+    return ProductCategories.load(categories)
+
+
+    Products.once('load', () => {
+      let queue = new NGN.Queue()
+
+      queue.add('Fetch Product Manifests...', next => {
+        Products.records.forEach(product => {
+          if (product.manifest) {
+            API.fetchManifest(product.manifest, manifest => {
+              product.manifest = manifest
+            })
+          }
+        })
+
+        next()
+      })
+
+      queue.add('Initialize Home Page...', next => {
+        Home.once('populated', () => {
+          Content.emit('show', 'home')
+          App.state = 'ready'
+          next()
+        })
+
+        Home.emit('populate')
+      })
+
+      queue.run()
+    })
+
+    Products.load(products)
   })
 })
